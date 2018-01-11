@@ -371,7 +371,7 @@ ColorSwitchProc(
     return TCL_OK;
 }
 
-#ifdef WIN32
+#ifndef HAVE_LOCALTIME_R
 static struct tm *
 localtime_r(const time_t *timePtr, struct tm *resultPtr)
 {
@@ -386,7 +386,7 @@ localtime_r(const time_t *timePtr, struct tm *resultPtr)
     }
     return resultPtr;
 }
-#endif  /* WIN32 */
+#endif  /* HAVE_LOCALTIME_R */
 
 static void
 TgaFree(Tga *tgaPtr)

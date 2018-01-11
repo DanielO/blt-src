@@ -65,9 +65,7 @@
 #include "bltAfm.h"
 #include "tkWinFont.h"
 
-#ifdef WIN32
-  #include <tkPlatDecls.h>
-#endif
+#include <tkPlatDecls.h>
 
 #define DEBUG_FONT_SELECTION    0
 #define DEBUG_FONT_SELECTION2   0

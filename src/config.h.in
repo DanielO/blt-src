@@ -214,6 +214,9 @@
 /* Define to 1 if you have the <limits.h> header file. */
 #undef HAVE_LIMITS_H
 
+/* Define to 1 if you have the `localtime_r' function. */
+#undef HAVE_LOCALTIME_R
+
 /* Define to 1 if you have the <malloc.h> header file. */
 #undef HAVE_MALLOC_H
 
@@ -501,6 +504,9 @@
 #  undef WORDS_BIGENDIAN
 # endif
 #endif
+
+/* Define if building for Win64. */
+#undef __WIN64
 
 /* Define to `long int' if <sys/types.h> does not define. */
 #undef off_t

@@ -676,6 +676,7 @@ AC_CHECK_FUNCS(tcflush openpty)
 AC_CHECK_FUNCS(open_controlling_pty)
 AC_CHECK_FUNCS(execvpe)
 AC_CHECK_FUNCS(shmget shmat shmctl shmdt)
+AC_CHECK_FUNCS(localtime_r)
 
 AC_CHECK_FUNCS(XShmQueryExtension XShmCreateImage XShmCreatePixmap)
 AC_CHECK_FUNCS(XShmAttach XShmDetach XShmPutImage XShmGetImage)

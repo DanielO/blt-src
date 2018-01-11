@@ -1090,8 +1090,8 @@ ButtonWidgetCmd(
                 Tcl_Sleep(50);
             }
         }
-    } else if ((c == 'i') && (strncmp(string, "invoke", length) == 0)
-        && (butPtr->type > TYPE_LABEL)) {
+    } else if ((c == 'i') && (strncmp(string, "invoke", length) == 0) &&
+               (butPtr->type > TYPE_LABEL)) {
         if (objc > 2) {
             Tcl_AppendResult(interp, "wrong # args: should be \"",
                 Tcl_GetString(objv[0]), " invoke\"", (char *)NULL);

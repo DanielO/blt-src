@@ -54,7 +54,6 @@
 #include "bltText.h"
 #include "bltChain.h"
 #include "bltTree.h"
-#include "bltTile.h"
 #include "bltBind.h"
 #include "bltBg.h"
 
