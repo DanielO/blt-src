@@ -1387,8 +1387,7 @@ GetFile(Tcl_Interp *interp, const char *fontName, Tcl_DString *namePtr,
     value = Tcl_DStringValue(valuePtr);
     /* Look for the font value. */
     for (i = 0; i < numValues; i++) {
-        unsigned long numBytesName, numBytesValue;
-        unsigned long regType;
+        DWORD numBytesName, numBytesValue, regType;
 
         numBytesName = maxBytesName;    
         numBytesValue = maxBytesValue;  
