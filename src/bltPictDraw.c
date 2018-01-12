@@ -54,7 +54,6 @@
   #ifndef TT_CONFIG_OPTION_SUBPIXEL_HINTING
     #define TT_CONFIG_OPTION_SUBPIXEL_HINTING 0
   #endif 
-  #include <X11/Xft/Xft.h>
 #endif  /* HAVE_LIBXFT */
 
 #include <X11/Xutil.h>

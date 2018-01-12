@@ -78,7 +78,6 @@ enum FontsetTypes {
     FONTSET_EXT                         /* Extended Tk font. */
 };
 
-#ifndef HAVE_LIBXFT
 #define FC_WEIGHT_THIN              0
 #define FC_WEIGHT_EXTRALIGHT        40
 #define FC_WEIGHT_ULTRALIGHT        FC_WEIGHT_EXTRALIGHT
@@ -134,8 +133,6 @@ enum FontsetTypes {
 #define FC_VERTICAL_LAYOUT  "verticallayout"    /* Bool (false) */
 #define FC_WEIGHT           "weight"            /* Int */
 #define FC_WIDTH            "width"             /* Int */
-
-#endif
 
 #ifndef FC_WEIGHT_EXTRABLACK
 #define FC_WEIGHT_EXTRABLACK        215

@@ -7949,22 +7949,12 @@ esac
 if test "${blt_with_tcl_lib_dir}" = "no" ; then
   as_fn_error $? "Can't find Tcl library: use --with-tcllibdir switch" "$LINENO" 5
 elif test "${blt_with_tcl_lib_dir}" = "yes" ; then
-  for libname in \
-   "${TCL_EXEC_PREFIX}/lib/${SO_PREFIX}tcl${TCL_LIB_VERSION}${SO_EXT}" \
-   "${TCL_EXEC_PREFIX}/lib/${IMPLIB_PREFIX}tcl${TCL_LIB_VERSION}${IMPLIB_EXT}" \
-   "${TCL_EXEC_PREFIX}/lib/${IMPLIB_PREFIX}tcl${TCL_LIB_VERSION}.lib" \
-   "${TCL_EXEC_PREFIX}/lib/libtcl${TCL_LIB_VERSION}.a"
-  do
-    if test -r "$libname" ; then
-      TCL_LIB_DIR="${TCL_EXEC_PREFIX}/lib"
-      if test "${TCL_LIB_DIR}" = "/usr/lib" ; then
-        TCL_LIB_SPEC="-ltcl${TCL_LIB_VERSION}"
-      else
-        TCL_LIB_SPEC="-L${TCL_LIB_DIR} -ltcl${TCL_LIB_VERSION}"
-      fi
-      break
-    fi
-  done
+  TCL_LIB_DIR="${TCL_EXEC_PREFIX}/lib"
+  if test "${TCL_LIB_DIR}" = "/usr/lib" ; then
+    TCL_LIB_SPEC="-ltcl${TCL_LIB_VERSION}"
+  else
+    TCL_LIB_SPEC="-L${TCL_LIB_DIR} -ltcl${TCL_LIB_VERSION}"
+  fi
 else
   for libname in \
    "${blt_with_tcl_lib_dir}/${SO_PREFIX}tcl${TCL_LIB_VERSION}${SO_EXT}" \
@@ -7990,22 +7980,12 @@ fi
 if test "${blt_with_tk_lib_dir}" = "no" ; then
   as_fn_error $? "Can't find Tcl library: use --with-tcllibdir switch" "$LINENO" 5
 elif test "${blt_with_tk_lib_dir}" = "yes" ; then
-  for libname in \
-   "${TK_EXEC_PREFIX}/lib/${SO_PREFIX}tk${TK_LIB_VERSION}${SO_EXT}" \
-   "${TK_EXEC_PREFIX}/lib/${IMPLIB_PREFIX}tk${TK_LIB_VERSION}${IMPLIB_EXT}" \
-   "${TK_EXEC_PREFIX}/lib/${IMPLIB_PREFIX}tk${TK_LIB_VERSION}.lib" \
-   "${TK_EXEC_PREFIX}/lib/libtk${TK_LIB_VERSION}.a"
-  do
-    if test -r "$libname" ; then
-      TK_LIB_DIR="${TK_EXEC_PREFIX}/lib"
-      if test "${TK_LIB_DIR}" = "/usr/lib" ; then
-        TK_LIB_SPEC="-ltk${TK_LIB_VERSION}"
-      else
-        TK_LIB_SPEC="-L${TK_LIB_DIR} -ltk${TK_LIB_VERSION}"
-      fi
-      break
-    fi
-  done
+  TK_LIB_DIR="${TK_EXEC_PREFIX}/lib"
+  if test "${TK_LIB_DIR}" = "/usr/lib" ; then
+    TK_LIB_SPEC="-ltk${TK_LIB_VERSION}"
+  else
+    TK_LIB_SPEC="-L${TK_LIB_DIR} -ltk${TK_LIB_VERSION}"
+  fi
 else
   for libname in \
    "${blt_with_tk_lib_dir}/${SO_PREFIX}tk${TK_LIB_VERSION}${SO_EXT}" \
