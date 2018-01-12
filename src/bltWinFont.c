@@ -1338,8 +1338,8 @@ GetFile(Tcl_Interp *interp, const char *fontName, Tcl_DString *namePtr,
     char *value;
     const char *fileName;
     const char *fontSubKey;
-    unsigned long maxBytesKey, maxBytesName, maxBytesValue;
-    unsigned long numSubKeys, numValues;
+    DWORD maxBytesKey, maxBytesName, maxBytesValue;
+    DWORD numSubKeys, numValues;
     int result, length;
     int i;
 

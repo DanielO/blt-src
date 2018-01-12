@@ -1215,7 +1215,7 @@ DrawLine(Display *display, Drawable drawable, GC gc, POINT *winPointArr,
 {
     DCState state;
     HDC hDC;
-    int i, n;
+    int i;
     int start, extra, size;
     HPEN hPen, hOldPen;
     HBRUSH hBrush, hOldBrush;

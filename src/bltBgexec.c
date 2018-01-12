@@ -77,6 +77,9 @@
 
 #ifdef MACOSX
   #include <crt_externs.h>
+#endif
+
+#if defined(MACOSX) || defined(__CYGWIN__)
   #include <sys/ioctl.h>
 #endif
 
