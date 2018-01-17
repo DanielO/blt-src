@@ -68,24 +68,36 @@ namespace eval blt {
 #   <ButtonRelease-3>	Stops scan
 #
 # ----------------------------------------------------------------------
-bind BltTabset <B2-Motion> {
-    %W scan dragto %x %y
-}
 
-bind BltTabset <ButtonPress-2> {
+set count 0
+bind BltTabset <ButtonPress-3> {
+    incr count
+puts stderr "$count: B3 on tabset %x %y"
     set blt::Tabset::_private(cursor) [%W cget -cursor]
     set blt::Tabset::_private(activate) no
     %W configure -cursor hand1
     %W scan mark %x %y
 }
 
-bind BltTabset <ButtonRelease-2> {
+bind BltTabset <B3-Motion> {
+puts stderr "$count: B3-motion on tabset"
+    %W scan dragto %x %y
+}
+
+bind BltTabset <ButtonRelease-3> {
+puts stderr "$count: B3-release on tabset"
     %W configure -cursor $::blt::Tabset::_private(cursor)
     set blt::Tabset::_private(activate) yes
     %W activate @%x,%y
 }
 
-bind BltTabset <B3-Motion> {
+
+if {[string equal "x11" [tk windowingsystem]]} {
+    bind BltTabset <4> {
+	%W view scroll -5 units
+    }
+    bind BltTabset <5> {
+	%W view scroll 5 unitsbind BltTabset <B3-Motion> {
     %W scan dragto %x %y
 }
 
@@ -100,6 +112,13 @@ bind BltTabset <ButtonRelease-3> {
     %W configure -cursor $blt::Tabset::_private(cursor)
     set blt::Tabset::_private(activate) yes
     %W activate @%x,%y
+}
+
+    }
+} else {
+    bind BltTabset <MouseWheel> {
+	%W view scroll [expr {- (%D / 120) * 4}] units
+    }
 }
 
 # ----------------------------------------------------------------------
@@ -410,13 +429,15 @@ proc blt::Tabset::Init { w } {
         }
     }
     $w bind all label <ButtonRelease-1> { 
-            after cancel $blt::Tabset::_private(afterId)
-            set blt::Tabset::_private(afterId) -1
+        after cancel $blt::Tabset::_private(afterId)
+        set blt::Tabset::_private(afterId) -1
         if { [%W slide isactive] } {
+            # Sliding the tab
             %W slide mark %x %y
             %W see slide.anchor
             %W slide stop
         } elseif { [%W identify "current" %x %y] != "" } {
+            # Release occurred over the tab.
             blt::Tabset::Select %W "current"
         }
     }
@@ -428,10 +449,14 @@ proc blt::Tabset::Init { w } {
 	%W perforation activate on
     }
     $w bind all perforation <Leave> { 
-	%W perforation activate off
+        %W perforation activate off
     }
     $w bind all perforation <ButtonRelease-1> { 
-	%W perforation invoke 
+        # Not sliding the tab and release occurred over the performation.
+        if { ![%W slide isactive] &&
+             [%W identify "current" %x %y] == "perforation" } {
+            %W perforation invoke 
+        }
     }
     $w bind all xbutton <Enter> { 
 	%W xbutton activate current 
@@ -440,6 +465,7 @@ proc blt::Tabset::Init { w } {
 	%W xbutton deactivate
     }
     $w bind all xbutton <ButtonRelease-1> { 
+        # Not sliding the tab and release occurred over the xbutton.
         if { ![%W slide isactive] } {
             if { [%W identify current %x %y] == "xbutton" } {
                 if { [%W cget -xbuttoncommand] == "" } {

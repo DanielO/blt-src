@@ -193,6 +193,21 @@ static Blt_SwitchSpec fftSwitches[] = {
     {BLT_SWITCH_END}
 };
 
+typedef struct {
+    double tol;
+    unsigned int flags;
+} SimplifySwitches;
+
+#define SIMPLIFY_INDICES (1)
+
+static Blt_SwitchSpec simplifySwitches[] = 
+{
+    {BLT_SWITCH_DOUBLE,    "-tol", "value", (char *)NULL,
+        Blt_Offset(SimplifySwitches, tol), 0},
+    {BLT_SWITCH_BITS_NOARG, "-indices", "", (char *)NULL,
+        Blt_Offset(SimplifySwitches, flags), 0, SIMPLIFY_INDICES},
+    {BLT_SWITCH_END}
+};
 /*
  *---------------------------------------------------------------------------
  *
@@ -3193,6 +3208,8 @@ SetOp(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
  *      The vector data is reset.  Clients of the vector are notified.  Any
  *      cached array indices are flushed.
  *
+ *      vectorName simplify x y tol
+ *
  *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
@@ -3202,21 +3219,22 @@ SimplifyOp(ClientData clientData, Tcl_Interp *interp, int objc,
 {
     Vector *vPtr = clientData;
     Vector *x, *y;
-    long i, n;
-    long numPoints;
+    int i, n, vecSize;
+    int numPoints;
     long *indices;
-    double tolerance = 10.0;
     Point2d *origPts;
     double *xArr, *yArr;
+    SimplifySwitches switches;
     
     if (GetVector(interp, vPtr->dataPtr, objv[2], &x) ||
         GetVector(interp, vPtr->dataPtr, objv[3], &y)) {
         return TCL_ERROR;
     }
-    if (objc > 4) {
-        if (Tcl_GetDoubleFromObj(interp, objv[4], &tolerance) != TCL_OK) {
-            return TCL_ERROR;
-        }
+    switches.flags = 0;
+    switches.tol = 10.0;
+    if (Blt_ParseSwitches(interp, simplifySwitches, objc - 4, objv + 4,
+                          &switches, BLT_SWITCH_DEFAULTS) < 0) {
+        return TCL_ERROR;
     }
     if (x->length != y->length) {
         Tcl_AppendResult(interp, "x and y vectors are not the same length",
@@ -3244,19 +3262,36 @@ SimplifyOp(ClientData clientData, Tcl_Interp *interp, int objc,
     indices = Blt_Malloc(sizeof(long) * numPoints);
     if (indices == NULL) {
         Tcl_AppendResult(interp, "can't allocate \"", Blt_Ltoa(numPoints), 
-                "\" indices for simplication array", (char *)NULL);
+                         "\" indices for simplication vector", (char *)NULL);
         Blt_Free(origPts);
         return TCL_ERROR;
     }
-    n = Blt_SimplifyLine(origPts, 0, numPoints - 1, tolerance, indices);
-    if (Blt_Vec_ChangeLength(interp, vPtr, n) != TCL_OK) {
+    n = Blt_SimplifyLine(origPts, 0, numPoints - 1, switches.tol, indices);
+    if (switches.flags & SIMPLIFY_INDICES) {
+        vecSize = n;
+    } else {
+        vecSize = n + n;
+    }
+    if (Blt_Vec_ChangeLength(interp, vPtr, vecSize) != TCL_OK) {
         Blt_Free(origPts);
         return TCL_ERROR;
     }
     xArr = Blt_VecData(vPtr);
-    for (i = 0; i < n; i++) {
-        xArr[i] = (double)indices[i];
+    if (switches.flags & SIMPLIFY_INDICES) {
+        int i;
+        
+        for (i = 0; i < n; i++) {
+            xArr[i] = (double)indices[i];
+        }
+    } else {
+        int j;
+        
+        for (i = 0, j = 0; i < n; i++, j += 2) {
+            xArr[j] = origPts[indices[i]].x;
+            xArr[j+1] = origPts[indices[i]].y;
+        }
     }
+    Blt_Free(origPts);
     Blt_Free(indices);
     /*
      * The vector has changed; so flush the array indices (they're wrong now),
@@ -3817,7 +3852,7 @@ static Blt_OpSpec vectorInstOps[] =
     {"search",    3, SearchOp,    3, 5, "?-value? value ?value?",},
     {"sequence",  3, SequenceOp,  4, 5, "start stop ?step?",},
     {"set",       3, SetOp,       3, 3, "item",},
-    {"simplify",  2, SimplifyOp,  2, 2, },
+    {"simplify",  2, SimplifyOp,  4, 5, "x y ?tol?" },
     {"sort",      2, SortOp,      2, 0, "?switches? ?vecName...?",},
     {"split",     2, SplitOp,     2, 0, "?vecName...?",},
     {"value",     5, ValueOp,     2, 0, "oper",},

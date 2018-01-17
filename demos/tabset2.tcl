@@ -85,3 +85,4 @@ foreach file { graph1 graph2 graph3 graph5 } {
     }
 }
 
+bind .t <Enter> { focus .t }

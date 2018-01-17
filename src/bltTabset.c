@@ -3683,6 +3683,24 @@ IdentifyPart(Tabset *setPtr, Tab *tabPtr, int sx, int sy)
     int x, y, w, h;
     LabelPart id;
 
+    /* Step 1: Check the perforation on the selected tab. */
+    if ((setPtr->selectPtr == tabPtr) && 
+        (setPtr->flags & setPtr->selectPtr->flags & TEAROFF)) {
+        int px, py, pw, ph;
+        
+        GetPerforationCoordinates(setPtr, &px, &py, &pw, &ph);
+        if (SIDE_HORIZONTAL(setPtr)) {
+            if ((sx >= px) && (sx <= (px + pw)) && 
+                (sy >= py) && (sy <= (py + ph))) {
+                return PICK_PERFORATION;
+            }
+        } else {
+            if ((sx >= px) && (sx < (px + ph)) &&
+                (sy >= py) && (sy < (py + pw))) {
+                return PICK_PERFORATION;
+            }
+        }
+    }
     id = PICK_LABEL;                    /* Suppress compiler warning. */
     GetLabelCoordinates(setPtr, tabPtr, &x, &y, &w, &h);
     switch (setPtr->quad) {
@@ -5416,6 +5434,7 @@ SlideAnchorOp(ClientData clientData, Tcl_Interp *interp, int objc,
         return TCL_ERROR;
     }
     setPtr->slidePtr = tabPtr;
+    fprintf(stderr, "slideX=%d\n", x);
     setPtr->slideX = x;
     setPtr->slideY = y;
     setPtr->slideOffset = 0;
@@ -5579,7 +5598,7 @@ SlideMarkOp(ClientData clientData, Tcl_Interp *interp, int objc,
                                          * before this one. */
             }
             setPtr->scrollOffset -= 10 /*prevPtr->worldWidth*/;
-            setPtr->slideX += 10 /*prevPtr->worldWidth*/;
+            setPtr->slideOffset -= 10 /*prevPtr->worldWidth*/;
             setPtr->flags |= (SCROLL_PENDING);
 #ifdef notdef
             Blt_Chain_UnlinkLink(setPtr->chain, tabPtr->link);
@@ -5596,7 +5615,7 @@ SlideMarkOp(ClientData clientData, Tcl_Interp *interp, int objc,
                                          * after this one. */
             }
             setPtr->scrollOffset += 10 /* nextPtr->worldWidth */; 
-            setPtr->slideX -= 10 /* nextPtr->worldWidth */;
+            setPtr->slideOffset += 10 /* nextPtr->worldWidth */;
             setPtr->flags |= (SCROLL_PENDING);
 #ifdef notdef
             Blt_Chain_UnlinkLink(setPtr->chain, tabPtr->link);
@@ -6904,7 +6923,7 @@ ScanOp(ClientData clientData, Tcl_Interp *interp, int objc,
         } else {
             delta = setPtr->scanAnchor - x;
         }
-        offset = setPtr->scanOffset + (10 * delta);
+        offset = setPtr->scanOffset + (delta * 10);
         offset = Blt_AdjustViewport(offset, setPtr->worldWidth,
             VPORTWIDTH(setPtr), setPtr->scrollUnits, BLT_SCROLL_MODE_HIERBOX);
         setPtr->scrollOffset = offset;
@@ -9252,11 +9271,17 @@ DisplayProc(ClientData clientData)    /* Information about widget. */
                 link = Blt_Chain_LastLink(setPtr->chain);
             }
             tabPtr = Blt_Chain_GetValue(link);
-            if ((tabPtr != setPtr->selectPtr) && (tabPtr->flags & VISIBLE)) {
+            if ((tabPtr != setPtr->slidePtr) && (tabPtr != setPtr->selectPtr) &&
+                (tabPtr->flags & VISIBLE)) {
                 DrawFolder(setPtr, tabPtr, pixmap);
             }
         }
-        DrawFolder(setPtr, setPtr->selectPtr, pixmap);
+        if (setPtr->slidePtr != NULL) {
+            DrawFolder(setPtr, setPtr->slidePtr, pixmap);
+        }
+        if (setPtr->selectPtr != NULL) {
+            DrawFolder(setPtr, setPtr->selectPtr, pixmap);
+        }
         if ((setPtr->selectPtr != NULL) &&
             (setPtr->flags & setPtr->selectPtr->flags & TEAROFF)) {
             DrawPerforation(setPtr, setPtr->selectPtr, pixmap);

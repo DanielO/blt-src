@@ -157,37 +157,37 @@ Blt_SimplifyLine(Point2d *inputPts, long low, long high, double tolerance,
 }
 
 int
-Blt_PointInSegments(
-    Point2d *samplePtr,
-    Segment2d *segments,
-    int numSegments,
-    double halo)
+Blt_PointInSegments(Point2d *samplePtr, Segment2d *segments, int numSegments,
+                    double halo)
 {
-    Segment2d *sp, *send;
     double minDist;
-
+    int i;
+    
     minDist = DBL_MAX;
-    for (sp = segments, send = sp + numSegments; sp < send; sp++) {
-        double dist;
-        double left, right, top, bottom;
+    for (i = 0; i < numSegments; i++) {
+        Segment2d *segPtr;
+        double d;
+        double x1, x2, y1, y2;
         Point2d p, t;
 
-        t = Blt_GetProjection(samplePtr->x, samplePtr->y, &sp->p, &sp->q);
-        if (sp->p.x > sp->q.x) {
-            right = sp->p.x, left = sp->q.x;
+        segPtr = segments + i;
+        t = Blt_GetProjection(samplePtr->x, samplePtr->y,
+                              &segPtr->p, &segPtr->q);
+        if (segPtr->p.x > segPtr->q.x) {
+            x2 = segPtr->p.x, x1 = segPtr->q.x;
         } else {
-            right = sp->q.x, left = sp->p.x;
+            x2 = segPtr->q.x, x1 = segPtr->p.x;
         }
-        if (sp->p.y > sp->q.y) {
-            bottom = sp->p.y, top = sp->q.y;
+        if (segPtr->p.y > segPtr->q.y) {
+            y2 = segPtr->p.y, y1 = segPtr->q.y;
         } else {
-            bottom = sp->q.y, top = sp->p.y;
+            y2 = segPtr->q.y, y1 = segPtr->p.y;
         }
-        p.x = BOUND(t.x, left, right);
-        p.y = BOUND(t.y, top, bottom);
-        dist = hypot(p.x - samplePtr->x, p.y - samplePtr->y);
-        if (dist < minDist) {
-            minDist = dist;
+        p.x = BOUND(t.x, x1, x2);
+        p.y = BOUND(t.y, y1, y2);
+        d = hypot(p.x - samplePtr->x, p.y - samplePtr->y);
+        if (d < minDist) {
+            minDist = d;
         }
     }
     return (minDist < halo);
