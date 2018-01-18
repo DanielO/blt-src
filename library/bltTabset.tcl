@@ -70,22 +70,22 @@ namespace eval blt {
 # ----------------------------------------------------------------------
 
 set count 0
-bind BltTabset <ButtonPress-3> {
+bind BltTabset <ButtonPress-2> {
     incr count
-puts stderr "$count: B3 on tabset %x %y"
+puts stderr "$count: B2 on tabset %x %y"
     set blt::Tabset::_private(cursor) [%W cget -cursor]
     set blt::Tabset::_private(activate) no
     %W configure -cursor hand1
     %W scan mark %x %y
 }
 
-bind BltTabset <B3-Motion> {
-puts stderr "$count: B3-motion on tabset"
+bind BltTabset <B2-Motion> {
+puts stderr "$count: B2-motion on tabset"
     %W scan dragto %x %y
 }
 
-bind BltTabset <ButtonRelease-3> {
-puts stderr "$count: B3-release on tabset"
+bind BltTabset <ButtonRelease-2> {
+puts stderr "$count: B2-release on tabset"
     %W configure -cursor $::blt::Tabset::_private(cursor)
     set blt::Tabset::_private(activate) yes
     %W activate @%x,%y
@@ -94,10 +94,18 @@ puts stderr "$count: B3-release on tabset"
 
 if {[string equal "x11" [tk windowingsystem]]} {
     bind BltTabset <4> {
-	%W view scroll -5 units
+	%W view scroll -20 units
     }
     bind BltTabset <5> {
-	%W view scroll 5 unitsbind BltTabset <B3-Motion> {
+	%W view scroll 20 units
+    }
+} else {
+    bind BltTabset <MouseWheel> {
+	%W view scroll [expr {- (%D / 120) * 4}] units
+    }
+}
+
+bind BltTabset <B3-Motion> {
     %W scan dragto %x %y
 }
 
@@ -114,12 +122,6 @@ bind BltTabset <ButtonRelease-3> {
     %W activate @%x,%y
 }
 
-    }
-} else {
-    bind BltTabset <MouseWheel> {
-	%W view scroll [expr {- (%D / 120) * 4}] units
-    }
-}
 
 # ----------------------------------------------------------------------
 # 
