@@ -3284,7 +3284,7 @@ ObjToXButton(ClientData clientData, Tcl_Interp *interp, Tk_Window tkwin,
         flag = X_BUTTON_NEVER;
     } else {
         Tcl_AppendResult(interp, "unknown xbutton value \"", string,
-                         "\": should be always, selected, or never.",
+                         "\": should be always, selected, unselected or never.",
                          (char *)NULL);
         return TCL_ERROR;
     }
@@ -5170,7 +5170,7 @@ BboxOp(ClientData clientData, Tcl_Interp *interp, int objc,
  *
  * BindOp --
  *
- *        pathName bind tabName type sequence command
+ *        pathName bind tabName ?-type? sequence command
  *
  *---------------------------------------------------------------------------
  */
@@ -5182,37 +5182,43 @@ BindOp(ClientData clientData, Tcl_Interp *interp, int objc,
     LabelPart id;
     Tab *tabPtr;
     Tabset *setPtr = clientData; 
-    char c;
     const char *string;
     int length;
     BindTag tag;
 
     string = Tcl_GetStringFromObj(objv[3], &length);
-    c = string[0];
-    if ((c == 'l') && (strncmp(string, "label", length) == 0)) {
-        id = PICK_LABEL;
-    } else if ((c == 'x') && (strncmp(string, "xbutton", length) == 0)) {
-        id = PICK_XBUTTON;
-    } else if ((c == 'p') && (strncmp(string, "perforation", length) == 0)) {
-        id = PICK_PERFORATION;
-    } else {
-        Tcl_AppendResult(interp, "Bad tab bind tag type \"", string, "\"",
+    id = PICK_LABEL;                    /* Defaults to label. */
+    if (string[0] == '-') {
+        char c;
+
+        c = string[1];
+        if ((c == 'l') && (strncmp(string, "-label", length) == 0)) {
+            id = PICK_LABEL;
+        } else if ((c == 'x') && (strncmp(string, "-xbutton", length) == 0)) {
+            id = PICK_XBUTTON;
+        } else if ((c == 'p') && (strncmp(string, "-perforation", length)==0)) {
+            id = PICK_PERFORATION;
+        } else {
+            Tcl_AppendResult(interp, "Bad tab bind tag type \"", string,
+                             "\": should be -label, -xbutton or -perforation",
                          (char *)NULL);
-        return TCL_ERROR;
+            return TCL_ERROR;
+        }
+        objv++, objc--;
     }
     /*
      * Tabs are selected by name only.  All other strings are interpreted as
      * a binding tag.
      */
-    if ((GetTabFromObj(NULL, setPtr, objv[2], &tabPtr) == TCL_OK) &&
+    if ((GetTabFromObj(NULL, setPtr, objv[1], &tabPtr) == TCL_OK) &&
         (tabPtr != NULL)) {
         tag = MakeBindTag(setPtr, tabPtr, id);
     } else {
         /* Assume that this is a binding tag. */
-        tag = MakeStringBindTag(setPtr, Tcl_GetString(objv[2]), id);
+        tag = MakeStringBindTag(setPtr, Tcl_GetString(objv[1]), id);
     } 
     return Blt_ConfigureBindingsFromObj(interp, setPtr->bindTable, tag, 
-         objc - 4, objv + 4);
+         objc - 3, objv + 3);
 }
 
 
