@@ -7634,7 +7634,7 @@ fprintf(stderr, "ColumnActivate: Column %s is NULL\n", Tcl_GetString(objv[3]));
  *
  *      Bind a callback to an event on a column title.
  *
- *        pathName column bind tag type sequence command
+ *        pathName column bind tag ?-type? sequence command
  *
  *---------------------------------------------------------------------------
  */
@@ -7651,6 +7651,7 @@ ColumnBindOp(TableView *viewPtr, Tcl_Interp *interp, int objc,
     ItemType type;
 
     string = Tcl_GetStringFromObj(objv[4], &length);
+    type = ITEM_CELL;
     c = string[0];
     if ((c == 'c') && (strncmp(string, "cell", length) == 0)) {
         type = ITEM_CELL;
