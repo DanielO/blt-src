@@ -1064,7 +1064,7 @@ static void
 ComputeGeometry(ComboEntry *comboPtr)
 {
     /* Determine the height of the entry.  It's the maximum height of all
-     * it's components: icon, label, clear button, and arrow. */
+     * it's components: icon, label, xbutton, and arrow. */
     comboPtr->iconWidth  = comboPtr->iconHeight  = 0;
     comboPtr->entryWidth = comboPtr->entryHeight = 0;
     comboPtr->textWidth  = comboPtr->textHeight  = 0;
@@ -4504,7 +4504,7 @@ DrawEntry(ComboEntry *comboPtr, Drawable drawable)
     }
     tx = x0 + IPADX;
     ty = y0 + 1;
-    /* Clear button. */
+    /* X button. */
     if (drawButton) {
         Blt_Picture picture;
         XButton *butPtr = &comboPtr->xButton;
