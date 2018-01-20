@@ -578,13 +578,13 @@ GetBackgroundTypeFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr,
     if ((c == 't') && (length > 1) && (strncmp(string, "tile", length) == 0)) {
         *typePtr = BLT_PAINTBRUSH_TILE;
     } else if ((c == 'l') && (length > 1)  &&
-               (strncmp(string, "linear", length) == 0)) {
+               (strncmp(string, "lineargradient", length) == 0)) {
         *typePtr = BLT_PAINTBRUSH_LINEAR;
     } else if ((c == 'r') && (length > 1)  &&
-               (strncmp(string, "radial", length) == 0)) {
+               (strncmp(string, "radialgradient", length) == 0)) {
         *typePtr = BLT_PAINTBRUSH_RADIAL;
     } else if ((c == 'c') && (length > 2)  &&
-               (strncmp(string, "conical", length) == 0)) {
+               (strncmp(string, "conicalgradient", length) == 0)) {
         *typePtr = BLT_PAINTBRUSH_CONICAL;
     } else if ((c == 's') && (length > 2) &&
                (strncmp(string, "stripes", length) == 0)) {
