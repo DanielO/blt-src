@@ -188,7 +188,7 @@ available for *tabset* widgets:
   upper-left and lower-right corners of the bounding box of the tab (but
   not its folder) in root coordinates.
 
-*pathName* **bind** *tagName* *type* ?\ *sequence*\ ? ?\ *cmdString*\ ?
+*pathName* **bind** *tagName* ?\ *switch*\ ? ?\ *sequence*\ ? ?\ *cmdString*\ ?
   Associates *cmdString* with *tagName* and *type* such that whenever the event
   sequence given by *sequence* occurs for a tab with this tag, *cmdString*
   will be invoked.  The syntax is similar to the **bind** command except
@@ -196,14 +196,17 @@ available for *tabset* widgets:
   entry for complete details on *sequence* and the substitutions performed
   on *cmdString*.
 
-  *Type* is the area of the tab. It can be one of the following.
+  *Switch* is a flag that specifies the area of the tab. It can be one of
+  the following.
 
-  **perforation**
+  **-label**
+    Matches the tab label.
+  **-perforation**
     Matches the area under the perforation.
-  **xbutton**
+  **-xbutton**
     Matches the area under the X button.
-  **label**
-    Matches all other areas of the tab label.
+  
+  By default labels are selected.
   
   If all arguments are specified then a new binding is created, replacing
   any existing binding for the same *sequence* and *tagName*.  If the first
