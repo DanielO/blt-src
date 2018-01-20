@@ -50,7 +50,7 @@ A background object can have one of the following types:
 **checkers**
   A checkers *background* object draws a checkered pattern background.
 
-**conical**
+**conicalgradient**
   A conical gradient *background* object draws a linear conical gradient
   as a background. Conical gradients are specified by a gradient
   circle. Colors are interpolated along its circumference. The image is
@@ -64,7 +64,7 @@ A background object can have one of the following types:
   gradient. The center of the gradient circle is relative to the window
   that it refers to (see the **-relativeto** option).
 
-**linear**
+**lineargradient**
   A linear gradient *background* object draws a linear gradient as a
   background. Linear gradients are defined by an axis (the gradient line
   segment) with each point on it interpolated to a specific color. The
@@ -75,7 +75,7 @@ A background object can have one of the following types:
   segment, its color may be the low or high color of the gradient, it
   may be repeated, or reversed (depending on the **-repeat** option).
 
-**radial** 
+**radialgradient** 
   A radial gradient *background* object draws a linear radial gradient as
   a background. Radial gradients are defined by a ellipse. Each point is
   interpolated according to its distance from the center of the ellipse
@@ -146,7 +146,7 @@ The following operations are available for the **blt::background** command:
   **-oncolor** *colorName*
     Specifies the color of even checkers. The default is "grey90".
 
-**blt::background create conical** ?\ *bgName*\ ? ?\ *option* *value* ... ?
+**blt::background create conicalgradient** ?\ *bgName*\ ? ?\ *option* *value* ... ?
   Creates a new conical gradient *background* object. Conical gradients are
   defined by an axis (the gradient line segment) with each point on it
   interpolated to a specific color. The lines perpendicular to the gradient
@@ -262,7 +262,7 @@ The following operations are available for the **blt::background** command:
     may have any of the forms accept able to Tk_GetPixels.  The default is
     "0".
 
-**blt::background create linear** ?\ *bgName*\ ? ?\ *option* *value* ... ?
+**blt::background create lineargradient** ?\ *bgName*\ ? ?\ *option* *value* ... ?
   Creates a new linear gradient *background* object. Linear gradients are
   defined by an axis (the gradient line segment) with each point on it
   interpolated to a specific color. The lines perpendicular to the gradient
@@ -400,7 +400,7 @@ The following operations are available for the **blt::background** command:
     may have any of the forms accept able to Tk_GetPixels.  The default is
     "0".
 
-**blt::background create radial** ?\ *bgName*\ ? ?\ *option* *value* ... ?
+**blt::background create radialgradient** ?\ *bgName*\ ? ?\ *option* *value* ... ?
   Creates a new radial gradient *background* object. Radial gradients are
   defined by an ellipse. Each point is interpolated according to its
   distance from the center of the ellipse and the shape of the ellipse.
