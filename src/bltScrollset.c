@@ -1786,12 +1786,14 @@ SetOp(Scrollset *setPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
             }
             /* Peek at the last and first values to see if we need a
              * scrollbar. */
+            setPtr->xScrollbarHeight = 0;
             if ((first <= 0.0) && (last >= 1.0)) {
                 setPtr->flags &= ~X_DISPLAY; /* Hide scrollbar. */
-                setPtr->xScrollbarHeight = 0;
             } else {
                 setPtr->flags |= X_DISPLAY; /* Display x-scrollbar. */
-                setPtr->xScrollbarHeight = Tk_ReqHeight(setPtr->xScrollbar);
+                if (setPtr->xScrollbar != NULL) {
+                    setPtr->xScrollbarHeight = Tk_ReqHeight(setPtr->xScrollbar);
+                } 
             }            
             setPtr->flags |= GEOMETRY;
             EventuallyRedraw(setPtr);
@@ -1801,12 +1803,14 @@ SetOp(Scrollset *setPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
             if (setPtr->yScrollbar != NULL) {
                 scrollbar = Tk_PathName(setPtr->yScrollbar);
             }
+            setPtr->yScrollbarWidth = 0;
             if ((first <= 0.0) && (last >= 1.0)) {
                 setPtr->flags &= ~Y_DISPLAY;     /* Hide scrollbar. */
-                setPtr->yScrollbarWidth = 0;
             } else {
                 setPtr->flags |= Y_DISPLAY; /* Display x-scrollbar. */
-                setPtr->yScrollbarWidth = Tk_ReqWidth(setPtr->yScrollbar);
+                if (setPtr->yScrollbar != NULL) {
+                    setPtr->yScrollbarWidth = Tk_ReqWidth(setPtr->yScrollbar);
+                }
             }
             setPtr->flags |= GEOMETRY;
             EventuallyRedraw(setPtr);
