@@ -40,7 +40,7 @@ A paintbrush can have one of the following types:
     This *paintbrush* object draws a checkered pattern.
   **color**
     A color *paintbrush* object draws a single color.
-  **conical**
+  **conicalgradient**
     A conical gradient *paintbrush* object draws a linear conical gradient
     as a paintbrush. Conical gradients are specified by a gradient
     circle. Colors are interpolated along its circumference. The image is
@@ -52,7 +52,7 @@ A paintbrush can have one of the following types:
     selections that significantly differ in lightness, the visual result is
     reminiscent of a cone observed from above, hence the name "conical"
     gradient. 
-  **linear**
+  **lineargradient**
     A linear gradient *paintbrush* object draws a linear gradient as a
     paintbrush. Linear gradients are defined by an axis (the gradient line
     segment) with each point on it interpolated to a specific color. The
@@ -61,7 +61,7 @@ A paintbrush can have one of the following types:
     the line segment, its color may be the low or high color of the
     gradient, it may be repeated, or reversed (depending on the **-repeat**
     option).
-  **radial** 
+  **radialgradient** 
     A radial gradient *paintbrush* object draws a linear radial gradient as
     a paintbrush. Radial gradients are defined by a gradent ellipse. Each
     point is interpolated according to its distance from the center of the
@@ -136,7 +136,7 @@ The following operations are available for the **blt::paintbrush** command:
     may have any of the forms accept able to **Tk_GetPixels**, such as
     "1.2i".  The default is "0".
 
-**blt::paintbrush create conical** ?\ *option* *value* ... ?
+**blt::paintbrush create conicalgradient** ?\ *option* *value* ... ?
   Creates a new conical gradient *paintbrush* object. Conical gradients are
   defined by a circle with each point in it interpolated to a specific
   color. The distance from the center of the circle determines how the
@@ -239,7 +239,7 @@ The following operations are available for the **blt::paintbrush** command:
     may have any of the forms accept able to **Tk_GetPixels**.  The default
     is "0".
 
-**blt::paintbrush create linear** ?\ *option* *value* ... ?
+**blt::paintbrush create lineargradient** ?\ *option* *value* ... ?
   Creates a new linear gradient *paintbrush* object. Linear gradients are
   defined by an axis (the gradient line segment) with each point on it
   interpolated to a specific color. The lines perpendicular to the gradient
@@ -348,7 +348,7 @@ The following operations are available for the **blt::paintbrush** command:
     may have any of the forms accept able to **Tk_GetPixels**.  The default is
     "0".
 
-**blt::paintbrush create radial** ?\ *option* *value* ... ?
+**blt::paintbrush create radialgradient** ?\ *option* *value* ... ?
   Creates a new radial gradient *paintbrush* object. Radial gradients are
   defined by an axis (the gradient line segment) with each point on it
   interpolated to a specific color. The lines perpendicular to the gradient
