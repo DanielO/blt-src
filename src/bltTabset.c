@@ -5440,7 +5440,6 @@ SlideAnchorOp(ClientData clientData, Tcl_Interp *interp, int objc,
         return TCL_ERROR;
     }
     setPtr->slidePtr = tabPtr;
-    fprintf(stderr, "slideX=%d\n", x);
     setPtr->slideX = x;
     setPtr->slideY = y;
     setPtr->slideOffset = 0;
@@ -5594,7 +5593,6 @@ SlideMarkOp(ClientData clientData, Tcl_Interp *interp, int objc,
             
         }
     } else {
-        fprintf(stderr, "X=%d\n", x);
         if (x < 0) {
             Tab *prevPtr;
         
