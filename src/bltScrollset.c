@@ -1341,7 +1341,7 @@ ArrangeWindows(Scrollset *setPtr)
     }
     /* Manage the geometry of the scrollbars. */
     
-    if (setPtr->flags & Y_DISPLAY) {
+    if ((setPtr->flags & Y_DISPLAY) && (setPtr->yScrollbar != NULL)) {
         int x, y;
         int yScrollbarHeight;
         
@@ -1371,7 +1371,7 @@ ArrangeWindows(Scrollset *setPtr)
         Tk_UnmapWindow(setPtr->yScrollbar);
     }
     
-    if (setPtr->flags & X_DISPLAY) {
+    if ((setPtr->flags & X_DISPLAY) && (setPtr->xScrollbar != NULL)) {
         int x, y;
         int xScrollbarWidth;
         
