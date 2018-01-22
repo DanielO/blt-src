@@ -244,14 +244,20 @@ static const char *sortTypeStrings[] = {
     "dictionary", "ascii", "integer", "real", "command", NULL
 };
 
-typedef ClientData (TagProc)(TreeView *viewPtr, const char *string);
 typedef int (TreeViewApplyProc)(TreeView *viewPtr, Entry *entryPtr);
-
-static CompareProc ExactCompare, GlobCompare, RegexpCompare;
-static TreeViewApplyProc ShowEntryApplyProc, HideEntryApplyProc, 
-        MapAncestorsApplyProc, FixSelectionsApplyProc;
-static Tk_LostSelProc LostSelection;
+static TreeViewApplyProc ShowEntryApplyProc;
+static TreeViewApplyProc HideEntryApplyProc;
+static TreeViewApplyProc MapAncestorsApplyProc;
+static TreeViewApplyProc FixSelectionsApplyProc;
 static TreeViewApplyProc SelectEntryApplyProc;
+
+static CompareProc ExactCompare;
+static CompareProc GlobCompare;
+static CompareProc RegexpCompare;
+typedef ClientData (TagProc)(TreeView *viewPtr, const char *string);
+
+
+static Tk_LostSelProc LostSelection;
 
 static Blt_OptionParseProc ObjToIcon;
 static Blt_OptionPrintProc IconToObj;
@@ -721,6 +727,7 @@ static Blt_SwitchSpec childrenSwitches[] = {
 
 typedef struct {
     unsigned int flags;
+    long maxDepth;
 } CloseSwitches;
 
 #define CLOSE_RECURSE     (1<<0)
@@ -728,6 +735,8 @@ typedef struct {
 static Blt_SwitchSpec closeSwitches[] = {
     {BLT_SWITCH_BITS_NOARG, "-recurse", "", (char *)NULL,
         Blt_Offset(CloseSwitches, flags), 0, CLOSE_RECURSE},
+    {BLT_SWITCH_LONG_NNEG, "-depth", "number", (char *)NULL,
+        Blt_Offset(CloseSwitches, maxDepth), 0},
     {BLT_SWITCH_END}
 };
 
@@ -797,6 +806,7 @@ static Blt_SwitchSpec nearestEntrySwitches[] = {
 
 typedef struct {
     unsigned int flags;
+    long maxDepth;
 } OpenSwitches;
 
 #define OPEN_RECURSE     (1<<0)
@@ -804,6 +814,23 @@ typedef struct {
 static Blt_SwitchSpec openSwitches[] = {
     {BLT_SWITCH_BITS_NOARG, "-recurse", "", (char *)NULL,
         Blt_Offset(OpenSwitches, flags), 0, OPEN_RECURSE},
+    {BLT_SWITCH_LONG_NNEG, "-depth", "number", (char *)NULL,
+        Blt_Offset(OpenSwitches, maxDepth), 0},
+    {BLT_SWITCH_END}
+};
+
+typedef struct {
+    unsigned int flags;
+    long maxDepth;
+} SizeSwitches;
+
+#define SIZE_RECURSE     (1<<0)
+
+static Blt_SwitchSpec sizeSwitches[] = {
+    {BLT_SWITCH_BITS_NOARG, "-recurse", "", (char *)NULL,
+        Blt_Offset(SizeSwitches, flags), 0, SIZE_RECURSE},
+    {BLT_SWITCH_LONG_NNEG, "-depth", "number", (char *)NULL,
+        Blt_Offset(SizeSwitches, maxDepth), 0},
     {BLT_SWITCH_END}
 };
 
@@ -3644,6 +3671,43 @@ Apply(
     }
     return TCL_OK;
 }
+
+static int
+ApplyDepthFirst(
+    TreeView *viewPtr,
+    Entry *entryPtr,			/* Root entry of subtree. */
+    TreeViewApplyProc *proc,		/* Procedure called for each
+					 * entry. */
+    unsigned int flags,
+    long maxDepth)
+{
+    Entry *childPtr, *nextPtr;
+
+    if ((flags & HIDDEN) && (EntryIsHidden(entryPtr))) {
+        return TCL_OK;                  /* Hidden node. */
+    }
+    if ((flags & entryPtr->flags) & HIDDEN) {
+        return TCL_OK;                  /* Hidden node. */
+    }
+    if ((maxDepth >= 0) && (Blt_Tree_NodeDepth(entryPtr->node) > maxDepth)) {
+	return TCL_OK;
+    }
+    for (childPtr = FirstChild(entryPtr, 0); childPtr != NULL; 
+	 childPtr = nextPtr) {
+	nextPtr = childPtr->nextSiblingPtr;
+	/* 
+	 * Get the next child before calling Apply recursively.  This
+	 * is because the apply callback may delete the node and its
+	 * link.
+	 */
+	if (ApplyDepthFirst(viewPtr, childPtr, proc, flags, maxDepth) 
+	    != TCL_OK) {
+	    return TCL_ERROR;
+	}
+    }
+    return (*proc) (viewPtr, entryPtr);
+}
+
 
 /*
  *---------------------------------------------------------------------------
@@ -10053,6 +10117,9 @@ CloseOp(ClientData clientData, Tcl_Interp *interp, int objc,
     for (entryPtr = FirstTaggedEntry(&iter); entryPtr != NULL; 
          entryPtr = NextTaggedEntry(&iter)) {
         int result;
+	int maxDepth;
+
+	maxDepth = -1;
 
         /* 
          * Clear the selections for any entries that may have become hidden
@@ -10080,8 +10147,12 @@ CloseOp(ClientData clientData, Tcl_Interp *interp, int objc,
             (Blt_Tree_IsAncestor(entryPtr->node, viewPtr->activePtr->node))) {
             viewPtr->activePtr = entryPtr;
         }
+	if (switches.maxDepth >= 0) {
+	    maxDepth = switches.maxDepth + Blt_Tree_NodeDepth(entryPtr->node);
+	}
         if (switches.flags & CLOSE_RECURSE) {
-            result = Apply(viewPtr, entryPtr, CloseEntry, 0);
+            result = ApplyDepthFirst(viewPtr, entryPtr, CloseEntry, 0, 
+				     maxDepth);
         } else {
             result = CloseEntry(viewPtr, entryPtr);
         }
@@ -11566,7 +11637,8 @@ EntryDeleteOp(ClientData clientData, Tcl_Interp *interp, int objc,
  *      TCL_OK is returned and interp->result contains the number of
  *      entries.
  *
- *      pathName entry size ?-recurse? entryName 
+ *      pathName entry size entryName ?switches ....? 
+ *
  *---------------------------------------------------------------------------
  */
 static int
@@ -11575,27 +11647,19 @@ EntrySizeOp(ClientData clientData, Tcl_Interp *interp, int objc,
 {
     TreeView *viewPtr = clientData;
     Entry *entryPtr;
-    int length, recurse;
+    SizeSwitches switches;
     long sum;
-    char *string;
 
-    recurse = FALSE;
-    string = Tcl_GetStringFromObj(objv[3], &length);
-    if ((string[0] == '-') && (length > 1) &&
-        (strncmp(string, "-recurse", length) == 0)) {
-        objv++, objc--;
-        recurse = TRUE;
-    }
-    if (objc == 3) {
-        Tcl_AppendResult(interp, "missing node argument: should be \"",
-            Tcl_GetString(objv[0]), " entry open node\"", (char *)NULL);
-        return TCL_ERROR;
-    }
     if (GetEntry(interp, viewPtr, objv[3], &entryPtr) != TCL_OK) {
         return TCL_ERROR;
     }
-
-    if (recurse) {
+    /* Process switches  */
+    switches.flags = 0;
+    if (Blt_ParseSwitches(interp, openSwitches, objc - 4, objv + 4, &switches,
+        BLT_SWITCH_DEFAULTS) < 0) {
+        return TCL_ERROR;
+    }
+    if (switches.flags & SIZE_RECURSE) {
         sum = Blt_Tree_Size(entryPtr->node);
     } else {
         sum = Blt_Tree_NodeDegree(entryPtr->node);
@@ -11642,7 +11706,7 @@ static Blt_OpSpec entryOps[] =
     /*open*/
     /*see*/
     /*show*/
-    {"size",      1, EntrySizeOp,      4, 5, "?-recurse? entryName",},
+    {"size",      1, EntrySizeOp,      4, 0, "entryName ?switches...?",},
     /*toggle*/
 };
 static int numEntryOps = sizeof(entryOps) / sizeof(Blt_OpSpec);
@@ -12891,7 +12955,8 @@ OpenOp(ClientData clientData, Tcl_Interp *interp, int objc,
         return TCL_ERROR;
     }
     /* Process switches  */
-    memset(&switches, 0, sizeof(switches));
+    switches.flags = 0;
+    switches.maxDepth = -1;
     if (Blt_ParseSwitches(interp, openSwitches, objc - 3, objv + 3, &switches,
         BLT_SWITCH_DEFAULTS) < 0) {
         return TCL_ERROR;
@@ -12899,9 +12964,15 @@ OpenOp(ClientData clientData, Tcl_Interp *interp, int objc,
     for (entryPtr = FirstTaggedEntry(&iter); entryPtr != NULL; 
          entryPtr = NextTaggedEntry(&iter)) {
         int result;
+	long maxDepth;
 
+	maxDepth = -1;
+	if (switches.maxDepth >= 0) {
+	    maxDepth = switches.maxDepth + Blt_Tree_NodeDepth(entryPtr->node);
+	}
         if (switches.flags & OPEN_RECURSE) {
-            result = Apply(viewPtr, entryPtr, OpenEntry, 0);
+            result = ApplyDepthFirst(viewPtr, entryPtr, OpenEntry, 0, 
+				     maxDepth);
         } else {
             result = OpenEntry(viewPtr, entryPtr);
         }

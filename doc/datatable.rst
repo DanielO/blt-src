@@ -988,7 +988,7 @@ the command.  The operations available for *datatables* are listed below.
     Indicates to return the labels for each sorted row.
 
   **-nocase** 
-    Ignores case when comparing values.  This only has affect when the
+    Ignores case when comparing values.  This only has effect when the
     **-ascii** switch is used.
 
   **-nonempty** 

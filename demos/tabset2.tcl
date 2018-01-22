@@ -66,7 +66,8 @@ foreach { entry label color window } $attributes {
     	-padx 1 -pady 0 -ipadx 0 -ipady 0 \
 }
 
-foreach page { there bunky another test of a widget } {
+for { set count 0 } { $count < 10 } { incr count } {
+    set page "Tab $count"
     .t insert end $page -icon label2  -ipady 4 \
     	-padx 1 -pady 0 -ipadx 0 -ipady 0 
 }

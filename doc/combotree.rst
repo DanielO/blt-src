@@ -402,7 +402,7 @@ command.  The following operations are available for *combotree* widgets:
   **-flat** *boolean*
     Indicates whether to display the tree as a flattened list.  If
     *boolean* is true, then the hierarchy will be a list of full paths for
-    the nodes.  This option also has affect on sorting.  See the **sort**
+    the nodes.  This option also has effect on sorting.  See the **sort**
     operation** section for more information.  The default is "no".
 
   **-font** *fontName* 

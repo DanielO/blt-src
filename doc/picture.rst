@@ -92,7 +92,7 @@ the command.  The operations available for pictures are listed below.
   specification.  Color components are clamped to 255.
        
   **-invert** *boolean*
-     Indicates to invert mask.  This only has affect is the **-mask** switch
+     Indicates to invert mask.  This only has effect is the **-mask** switch
      is set.
 
   **-mask** *mask*
@@ -105,7 +105,7 @@ the command.  The operations available for pictures are listed below.
   or a color specification.  The resulting image is saved in *imageName*.
   
   **-invert** *boolean*
-     Indicates to invert mask.  This only has affect is the **-mask** switch
+     Indicates to invert mask.  This only has effect is the **-mask** switch
      is set.
 
   **-mask** *mask*
@@ -611,7 +611,7 @@ the command.  The operations available for pictures are listed below.
   is saved in *imageName*.
 
   **-invert** *boolean*
-     Indicates to invert mask.  This only has affect is the **-mask** switch
+     Indicates to invert mask.  This only has effect is the **-mask** switch
      is set.
 
   **-mask** *mask*
@@ -625,7 +625,7 @@ the command.  The operations available for pictures are listed below.
   is saved in *imageName*.
 
   **-invert** *boolean*
-    Indicates to invert mask.  This only has affect is the **-mask** switch
+    Indicates to invert mask.  This only has effect is the **-mask** switch
     is set.
 
   **-mask** *mask*
@@ -645,7 +645,7 @@ the command.  The operations available for pictures are listed below.
   saved in *imageName*.
 
   **-invert** *boolean*
-     Indicates to invert mask.  This only has affect is the **-mask** switch
+     Indicates to invert mask.  This only has effect is the **-mask** switch
      is set.
 
   **-mask** *mask*
@@ -665,7 +665,7 @@ the command.  The operations available for pictures are listed below.
   in *imageName*.
 
   **-invert** *boolean*
-     Indicates to invert mask.  This only has affect is the **-mask** switch
+     Indicates to invert mask.  This only has effect is the **-mask** switch
      is set.
 
   **-mask** *mask*
@@ -1006,7 +1006,7 @@ the command.  The operations available for pictures are listed below.
   saved in *imageName*.
 
   **-invert** *boolean*
-    Indicates to invert mask.  This only has affect is the **-mask** switch
+    Indicates to invert mask.  This only has effect is the **-mask** switch
     is set.
 
   **-mask** *mask*
@@ -1055,7 +1055,7 @@ the command.  The operations available for pictures are listed below.
   *imageName*. *Switches* can be one of the following.
 
   **-invert** 
-    Indicates to invert the mask.  This only has affect is the **-mask**
+    Indicates to invert the mask.  This only has effect is the **-mask**
     switch is set.
 
   **-mask** *mask*

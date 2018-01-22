@@ -154,3 +154,4 @@ $view column configure treeView -style textbox
 wm protocol . WM_DELETE_WINDOW { destroy . }
 
 bind $view <Enter> { focus %W }
+$view open root -recurse -depth 0

@@ -495,13 +495,21 @@ command.  The following operation are available for *treeview* widgets:
   Indicates if *cellName* can be edited according to its current style.
   Returns "1" is the cell is writable, "0" otherwise.
   
-*pathName* **close** ?\ **-recurse**\ ? *entryName* ... ?
-  Closes the entry specified by *entryName*.  In addition, if a TCL
-  script was specified by the **-closecommand** option, it is
-  invoked.  If the entry is already closed, this command has no effect.
-  If the **-recurse** flag is present, each child node is
-  recursively closed.
+*pathName* **close** *entryName* ?\ *switches*\ ?
+  Closes the entry specified by *entryName*.  *EntryName* is a tag of id,
+  and may refer to multiple entries.  In addition, if a TCL script was
+  specified by the **-closecommand** option, it is invoked.  If the entry
+  is already closed, this command has no effect.
 
+ *Switches* can be one of the following:
+
+  **-maxdepth** *number*
+    Specifies the relative maximum depth to recursively descend the 
+    branch. Only has effect if **-recurse** is used.
+
+  **-recurse**
+    Recursively close each descendant. 
+  
 *pathName* **column activate** ?\ *columnName*\ ?
   Sets or gets the active column.  If no *columnName* argument is given,
   this command returns the name of the currently active column.  Otherwise
@@ -797,7 +805,7 @@ command.  The following operation are available for *treeview* widgets:
   **-flat** *boolean*
     Indicates whether to display the tree as a flattened list.  If
     *boolean* is true, then the hierarchy will be a list of full paths for
-    the nodes.  This option also has affect on sorting.  See the **sort**
+    the nodes.  This option also has effect on sorting.  See the **sort**
     operation** section for more information.  The default is "no".
 
   **-focusdashes** *dashList* 
@@ -1326,12 +1334,21 @@ command.  The following operation are available for *treeview* widgets:
   a TCL variable that is set to either "button", "label", "label", or ""
   depending what part of the entry the coordinate lies.
 
-*pathName* **open** ?\ **-recurse**\ ? *tagOrId* ...
-  Opens the one or more nodes specified by *tagOrId*.  If a node is not
+*pathName* **open** *entryName* ?\ *switches ...*\ ?
+  Opens the one or more nodes specified by *entryName*.  *EntryName* is a
+  tag of id, and may refer to multiple entries.  If a node is not
   already open, the TCL script specified by the **-opencommand** option is
-  invoked. If the **-recurse** flag is present, then each descendant is
-  recursively opened.
+  invoked. 
 
+ *Switches* can be one of the following:
+
+  **-maxdepth** *number*
+    Specifies the relative maximum depth to recursively descend the 
+    branch. Only has effect if **-recurse** is used.
+
+  **-recurse**
+    Recursively open each descendant. 
+  
 *pathName* **range** ?\ **-open**\ ? *first* *last*
   Returns the ids in depth-first order of the nodes between the *first* and
   *last* ids.  If the **-open** flag is present, it indicates to consider
