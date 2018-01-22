@@ -407,18 +407,18 @@ proc blt::Tabset::HandleButtonRelease { w x y } {
 # ----------------------------------------------------------------------
 
 proc blt::Tabset::Init { w } {
-    $w bind all label <Enter> { 
+    $w bind all <Enter> { 
 	if { $::blt::Tabset::_private(activate) } {
 	    %W activate current
         }
     }
-    $w bind all label <Leave> { 
+    $w bind all <Leave> { 
         %W activate "" 
     }
-    $w bind all label <ButtonPress-1> { 
+    $w bind all <ButtonPress-1> { 
         %W slide anchor current %x %y
     }
-    $w bind all label <B1-Motion> { 
+    $w bind all <B1-Motion> { 
         if {[%W slide isauto %x %y]} {
             if { $blt::Tabset::_private(afterId) == -1 } {
                 set blt::Tabset::_private(afterId) \
@@ -430,7 +430,7 @@ proc blt::Tabset::Init { w } {
             %W slide mark %x %y
         }
     }
-    $w bind all label <ButtonRelease-1> { 
+    $w bind all <ButtonRelease-1> { 
         after cancel $blt::Tabset::_private(afterId)
         set blt::Tabset::_private(afterId) -1
         if { [%W slide isactive] } {
@@ -443,30 +443,30 @@ proc blt::Tabset::Init { w } {
             blt::Tabset::Select %W "current"
         }
     }
-    $w bind all label <Control-ButtonRelease-1> { 
+    $w bind all <Control-ButtonRelease-1> { 
 	blt::Tabset::ToggleTearoff %W active
     }
     $w configure -perforationcommand [list blt::Tabset::ToggleTearoff $w]
-    $w bind all perforation <Enter> { 
+    $w perforation bind all <Enter> { 
 	%W perforation activate on
     }
-    $w bind all perforation <Leave> { 
+    $w perforation bind all <Leave> { 
         %W perforation activate off
     }
-    $w bind all perforation <ButtonRelease-1> { 
+    $w perforation bind all <ButtonRelease-1> { 
         # Not sliding the tab and release occurred over the performation.
         if { ![%W slide isactive] &&
              [%W identify "current" %x %y] == "perforation" } {
             %W perforation invoke 
         }
     }
-    $w bind all xbutton <Enter> { 
+    $w xbutton bind all <Enter> { 
 	%W xbutton activate current 
     }
-    $w bind all xbutton <Leave> { 
+    $w xbutton bind all <Leave> { 
 	%W xbutton deactivate
     }
-    $w bind all xbutton <ButtonRelease-1> { 
+    $w xbutton bind all <ButtonRelease-1> { 
         # Not sliding the tab and release occurred over the xbutton.
         if { ![%W slide isactive] } {
             if { [%W identify current %x %y] == "xbutton" } {
