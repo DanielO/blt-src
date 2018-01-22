@@ -5170,7 +5170,7 @@ BboxOp(ClientData clientData, Tcl_Interp *interp, int objc,
  *
  * BindOp --
  *
- *        pathName bind tabName ?-type? sequence command
+ *        pathName bind tabName sequence command
  *
  *---------------------------------------------------------------------------
  */
@@ -5182,40 +5182,19 @@ BindOp(ClientData clientData, Tcl_Interp *interp, int objc,
     LabelPart id;
     Tab *tabPtr;
     Tabset *setPtr = clientData; 
-    const char *string;
-    int length;
     BindTag tag;
 
-    string = Tcl_GetStringFromObj(objv[3], &length);
     id = PICK_LABEL;                    /* Defaults to label. */
-    if (string[0] == '-') {
-        char c;
-
-        c = string[1];
-        if ((c == 'l') && (strncmp(string, "-label", length) == 0)) {
-            id = PICK_LABEL;
-        } else if ((c == 'x') && (strncmp(string, "-xbutton", length) == 0)) {
-            id = PICK_XBUTTON;
-        } else if ((c == 'p') && (strncmp(string, "-perforation", length)==0)) {
-            id = PICK_PERFORATION;
-        } else {
-            Tcl_AppendResult(interp, "Bad tab bind tag type \"", string,
-                             "\": should be -label, -xbutton or -perforation",
-                         (char *)NULL);
-            return TCL_ERROR;
-        }
-        objv++, objc--;
-    }
     /*
      * Tabs are selected by name only.  All other strings are interpreted as
      * a binding tag.
      */
-    if ((GetTabFromObj(NULL, setPtr, objv[1], &tabPtr) == TCL_OK) &&
+    if ((GetTabFromObj(NULL, setPtr, objv[2], &tabPtr) == TCL_OK) &&
         (tabPtr != NULL)) {
         tag = MakeBindTag(setPtr, tabPtr, id);
     } else {
         /* Assume that this is a binding tag. */
-        tag = MakeStringBindTag(setPtr, Tcl_GetString(objv[1]), id);
+        tag = MakeStringBindTag(setPtr, Tcl_GetString(objv[2]), id);
     } 
     return Blt_ConfigureBindingsFromObj(interp, setPtr->bindTable, tag, 
          objc - 3, objv + 3);
@@ -5507,9 +5486,8 @@ SlideIsAutoOp(ClientData clientData, Tcl_Interp *interp, int objc,
         return TCL_ERROR;
     }
     if (setPtr->slidePtr == NULL) {
-        Tcl_AppendResult(interp, "No tab designated for sliding.  "
-                         "Must call \"slide anchor\" first.", (char *)NULL);
-        return TCL_ERROR;
+        Tcl_SetBooleanObj(Tcl_GetObjResult(interp), FALSE);
+        return TCL_OK;
     }
     dx = x - setPtr->slideX;
     dy = y - setPtr->slideY;
@@ -6797,6 +6775,41 @@ PerforationActivateOp(ClientData clientData, Tcl_Interp *interp, int objc,
 /*
  *---------------------------------------------------------------------------
  *
+ * PerforationBindOp --
+ *
+ *        pathName perforation bind tabName sequence command
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static int
+PerforationBindOp(ClientData clientData, Tcl_Interp *interp, int objc, 
+                  Tcl_Obj *const *objv)
+{
+    LabelPart id;
+    Tab *tabPtr;
+    Tabset *setPtr = clientData; 
+    BindTag tag;
+
+    id = PICK_PERFORATION;
+    /*
+     * Tabs are selected by name only.  All other strings are interpreted as
+     * a binding tag.
+     */
+    if ((GetTabFromObj(NULL, setPtr, objv[3], &tabPtr) == TCL_OK) &&
+        (tabPtr != NULL)) {
+        tag = MakeBindTag(setPtr, tabPtr, id);
+    } else {
+        /* Assume that this is a binding tag. */
+        tag = MakeStringBindTag(setPtr, Tcl_GetString(objv[3]), id);
+    } 
+    return Blt_ConfigureBindingsFromObj(interp, setPtr->bindTable, tag, 
+         objc - 4, objv + 4);
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
  * PerforationInvokeOp --
  *
  *      This procedure is called to invoke a perforation command.
@@ -6850,11 +6863,13 @@ PerforationInvokeOp(ClientData clientData, Tcl_Interp *interp, int objc,
  * Results:
  *      A standard TCL result.
  *
+ *      pathName perforation bind tag seq cmd
  *---------------------------------------------------------------------------
  */
 static Blt_OpSpec perforationOps[] =
 {
     {"activate", 1, PerforationActivateOp, 4, 4, "boolean" }, 
+    {"bind",     1, PerforationBindOp,     4, 6, "tag ?sequence command?",},
     {"invoke",   1, PerforationInvokeOp,   3, 3, "",},
 };
 
@@ -7594,6 +7609,41 @@ XButtonActivateOp(ClientData clientData, Tcl_Interp *interp, int objc,
 /*
  *---------------------------------------------------------------------------
  *
+ * XButtonBindOp --
+ *
+ *        pathName xbutton bind tabName sequence command
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static int
+XButtonBindOp(ClientData clientData, Tcl_Interp *interp, int objc, 
+                  Tcl_Obj *const *objv)
+{
+    LabelPart id;
+    Tab *tabPtr;
+    Tabset *setPtr = clientData; 
+    BindTag tag;
+
+    id = PICK_XBUTTON;
+    /*
+     * Tabs are selected by name only.  All other strings are interpreted as
+     * a binding tag.
+     */
+    if ((GetTabFromObj(NULL, setPtr, objv[3], &tabPtr) == TCL_OK) &&
+        (tabPtr != NULL)) {
+        tag = MakeBindTag(setPtr, tabPtr, id);
+    } else {
+        /* Assume that this is a binding tag. */
+        tag = MakeStringBindTag(setPtr, Tcl_GetString(objv[3]), id);
+    } 
+    return Blt_ConfigureBindingsFromObj(interp, setPtr->bindTable, tag, 
+         objc - 4, objv + 4);
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
  * XButtonDeactivateOp --
  *
  *      This procedure is called to un-highlight the active tab button.
@@ -7743,6 +7793,7 @@ XButtonInvokeOp(ClientData clientData, Tcl_Interp *interp, int objc,
 static Blt_OpSpec xbuttonOps[] =
 {
     {"activate",   1, XButtonActivateOp,   4, 4, "tabName" }, 
+    {"bind",       1, XButtonBindOp,       4, 6, "tag ?sequence command?",},
     {"cget",       2, XButtonCgetOp,       4, 4, "option",},
     {"configure",  2, XButtonConfigureOp,  3, 0, "?option value?...",},
     {"deactivate", 1, XButtonDeactivateOp, 3, 3, }, 
@@ -9447,7 +9498,7 @@ static Blt_OpSpec tabsetOps[] =
     {"activate",    2, ActivateOp,    3, 3, "tabName",},
     {"add",         2, AddOp,         2, 0, "?label? ?option-value..?",},
     {"bbox",        2, BboxOp,        3, 3, "tabName",},
-    {"bind",        2, BindOp,        4, 6, "tabName type ?sequence command?",},
+    {"bind",        2, BindOp,        3, 5, "tabName ?sequence command?",},
     {"cget",        2, CgetOp,        3, 3, "option",},
     {"configure",   2, ConfigureOp,   2, 0, "?option value?...",},
     {"deactivate",  3, DeactivateOp,  2, 2, "",},
