@@ -108,10 +108,10 @@ itcl::body blt::PrintGraph::constructor { args } {
         blt::tabset $itk_interior.tabs \
             -highlightthickness 0 -tearoff 0 -side top \
             -outerborderwidth 0 -gap 0 -borderwidth 1 \
-            -outerpad 1 -troughcolor grey -dashes dot
+            -outerpad 1 -troughcolor grey 
     } {
         keep -cursor
-        ignore -highlightthickness -borderwidth -background -dashes
+        ignore -highlightthickness -borderwidth -background 
     }
     set inner [frame $itk_interior.frame -bg grey]
     itk_component add preview {
