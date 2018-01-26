@@ -587,7 +587,6 @@ static Blt_ConfigSpec viewSpecs[] = {
     {BLT_CONFIG_END, NULL, NULL, NULL, NULL, 0, 0}
 };
 
-
 static Blt_ConfigSpec columnSpecs[] = {
     {BLT_CONFIG_BACKGROUND, "-activetitlebackground", "activeTitleBackground", 
         "Background", DEF_COLUMN_ACTIVE_TITLE_BG, 
@@ -602,9 +601,6 @@ static Blt_ConfigSpec columnSpecs[] = {
      {BLT_CONFIG_PIXELS_NNEG, "-borderwidth", "borderWidth", "BorderWidth",
         DEF_COLUMN_BORDERWIDTH, Blt_Offset(Column, borderWidth),
         BLT_CONFIG_DONT_SET_DEFAULT},
-    {BLT_CONFIG_OBJ, "-command", "command", "Command",
-        DEF_COLUMN_COMMAND, Blt_Offset(Column, cmdObjPtr),
-        BLT_CONFIG_DONT_SET_DEFAULT | BLT_CONFIG_NULL_OK}, 
     {BLT_CONFIG_BITMASK_INVERT, "-edit", "edit", "Edit", DEF_COLUMN_STATE, 
         Blt_Offset(Column, flags), BLT_CONFIG_DONT_SET_DEFAULT, 
         (Blt_CustomOption *)COLUMN_READONLY},
@@ -654,15 +650,16 @@ static Blt_ConfigSpec columnSpecs[] = {
         Blt_Offset(Column, state), BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_CUSTOM, "-style", "style", "Style", DEF_COLUMN_STYLE, 
         Blt_Offset(Column, stylePtr), BLT_CONFIG_NULL_OK, &styleOption},
-    {BLT_CONFIG_STRING, "-text", "text", "Text",
-        (char *)NULL, Blt_Offset(Column, text), 0},
     {BLT_CONFIG_STRING, "-title", "title", "Title", (char *)NULL, 
-        Blt_Offset(Column, text), 0},
+        Blt_Offset(Column, titleText), 0},
     {BLT_CONFIG_BACKGROUND, "-titlebackground", "titleBackground", 
         "TitleBackground", DEF_COLUMN_TITLE_BG, Blt_Offset(Column, titleBg), 0},
     {BLT_CONFIG_PIXELS_NNEG, "-titleborderwidth", "titleBorderWidth", 
         "TitleBorderWidth", DEF_COLUMN_TITLE_BORDERWIDTH, 
         Blt_Offset(Column, titleBW), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_OBJ, "-titlecommand", "titleCommand", "TitleCommand",
+        DEF_COLUMN_COMMAND, Blt_Offset(Column, titleCmdObjPtr),
+        BLT_CONFIG_DONT_SET_DEFAULT | BLT_CONFIG_NULL_OK}, 
     {BLT_CONFIG_FONT, "-titlefont", "titleFont", "Font",
         DEF_COLUMN_TITLE_FONT, Blt_Offset(Column, titleFont), 0},
     {BLT_CONFIG_COLOR, "-titleforeground", "titleForeground", "TitleForeground",
@@ -678,6 +675,47 @@ static Blt_ConfigSpec columnSpecs[] = {
         BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_PIXELS_NNEG, "-width", "width", "Width",
         DEF_COLUMN_WIDTH, Blt_Offset(Column, reqWidth), 
+        BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_END, (char *)NULL, (char *)NULL, (char *)NULL,
+        (char *)NULL, 0, 0}
+};
+
+static Blt_ConfigSpec columnTitleSpecs[] = {
+    {BLT_CONFIG_BACKGROUND, "-activebackground", "activeBackground", 
+        "ActiveBackground", DEF_COLUMN_ACTIVE_TITLE_BG, 
+        Blt_Offset(Column, activeTitleBg), 0},
+    {BLT_CONFIG_COLOR, "-activeforeground", "activeForeground", 
+        "ActiveForeground", DEF_COLUMN_ACTIVE_TITLE_FG, 
+        Blt_Offset(Column, activeTitleFgColor), 0},
+    {BLT_CONFIG_BACKGROUND, "-background", "background", 
+        "Background", DEF_COLUMN_TITLE_BG, Blt_Offset(Column, titleBg), 0},
+    {BLT_CONFIG_SYNONYM, "-bd", "borderWidth"},
+    {BLT_CONFIG_OBJ, "-bindtags", "bindTags", "BindTags",
+        DEF_COLUMN_BINDTAGS, Blt_Offset(Column, bindTagsObjPtr),
+        BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_PIXELS_NNEG, "-borderwidth", "borderWidth", 
+        "BorderWidth", DEF_COLUMN_TITLE_BORDERWIDTH, 
+        Blt_Offset(Column, titleBW), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_OBJ, "-command", "command", "Command",
+        DEF_COLUMN_COMMAND, Blt_Offset(Column, titleCmdObjPtr),
+        BLT_CONFIG_DONT_SET_DEFAULT | BLT_CONFIG_NULL_OK}, 
+    {BLT_CONFIG_FONT, "-font", "font", "Font",
+        DEF_COLUMN_TITLE_FONT, Blt_Offset(Column, titleFont), 0},
+    {BLT_CONFIG_COLOR, "-foreground", "foreground", "Foreground",
+        DEF_COLUMN_TITLE_FOREGROUND, Blt_Offset(Column, titleFgColor), 0},
+    {BLT_CONFIG_CUSTOM, "-icon", "icon", "icon", (char *)NULL, 
+        Blt_Offset(Column, titleIcon),
+        BLT_CONFIG_NULL_OK | BLT_CONFIG_DONT_SET_DEFAULT, &iconOption},
+    {BLT_CONFIG_JUSTIFY, "-justify", "justify", "Justify", 
+        DEF_COLUMN_JUSTIFY, Blt_Offset(Column, titleJustify), 
+        BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_RELIEF, "-relief", "relief", "Relief",
+        DEF_COLUMN_TITLE_RELIEF, Blt_Offset(Column, titleRelief), 
+        BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_STRING, "-text", "text", "Text",
+        (char *)NULL, Blt_Offset(Column, titleText), 0},
+    {BLT_CONFIG_DOUBLE, "-weight", (char *)NULL, (char *)NULL,
+        DEF_COLUMN_WEIGHT, Blt_Offset(Column, weight), 
         BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_END, (char *)NULL, (char *)NULL, (char *)NULL,
         (char *)NULL, 0, 0}
@@ -833,6 +871,42 @@ static Blt_SwitchSpec sizeSwitches[] = {
         Blt_Offset(SizeSwitches, maxDepth), 0},
     {BLT_SWITCH_END}
 };
+
+
+/*
+ * ColumnIterator --
+ *
+ *      Tabs may be tagged with strings.  A tab may have many tags.  The
+ *      same tag may be used for many tabs.
+ *      
+ */
+typedef enum { 
+    ITER_SINGLE, ITER_ALL, ITER_TAG, 
+} IteratorType;
+
+typedef struct _ColumnIterator {
+    TreeView *viewPtr;			
+    IteratorType type;                  /* Type of iteration:
+                                         * ITER_TAG      By item tag.
+                                         * ITER_ALL      By every item.
+                                         * ITER_SINGLE   Single item: either 
+                                         *               tag or index.
+                                         */
+
+    Column *startPtr;                   /* Starting item.  Starting point
+                                         * of search, saved if iterator is
+                                         * reused.  Used for ITER_ALL and
+                                         * ITER_SINGLE searches. */
+    Column *endPtr;                     /* Ending item (inclusive). */
+    Column *nextPtr;                    /* Next item. */
+    /* For tag-based searches. */
+    const char *tagName;                /* If non-NULL, is the tag that we
+                                         * are currently iterating over. */
+    Blt_HashTable *tablePtr;            /* Pointer to tag hash table. */
+    Blt_HashSearch cursor;              /* Search iterator for tag hash
+                                         * table. */
+    Blt_ChainLink link;
+} ColumnIterator;
 
 
 /* Forward Declarations */
@@ -1830,50 +1904,274 @@ NearestColumn(TreeView *viewPtr, int x, int y, ItemType *typePtr)
 }
 
 static int
-GetColumn(Tcl_Interp *interp, TreeView *viewPtr, Tcl_Obj *objPtr, 
-          Column **colPtrPtr)
+GetColumnByIndex(Tcl_Interp *interp, TreeView *viewPtr, const char *string, 
+		 int length, Column **colPtrPtr)
 {
-    const char *string;
     char c;
     int index;
 
-    string = Tcl_GetString(objPtr);
     c = string[0];
     if ((c == 't') && (strcmp(string, "treeView") == 0)) {
         *colPtrPtr = &viewPtr->treeColumn;
     } else if ((c == 'c') && (strcmp(string, "current") == 0)){ 
         *colPtrPtr = GetCurrentColumn(viewPtr);
     } else if ((c == 'a') && (strcmp(string, "active") == 0)){ 
-        *colPtrPtr = viewPtr->colActivePtr;
-    } else if ((isdigit(c)) && 
-               (Tcl_GetIntFromObj(NULL, objPtr, &index) == TCL_OK)) {
+        *colPtrPtr = viewPtr->colActiveTitlePtr;
+    } else if ((isdigit(c)) && (Tcl_GetInt(NULL, string, &index) == TCL_OK)) {
         Blt_ChainLink link;
 
         if (index >= Blt_Chain_GetLength(viewPtr->columns)) {
-            Tcl_AppendResult(interp, "bad column index \"", string, "\"",
-                             (char *)NULL);
+	    if (interp != NULL) {
+		Tcl_AppendResult(interp, "bad column index \"", string, "\"",
+				 (char *)NULL);
+	    }
             return TCL_ERROR;
         }
         link = Blt_Chain_GetNthLink(viewPtr->columns, index);
         *colPtrPtr = Blt_Chain_GetValue(link);
     } else {
-        Blt_HashEntry *hPtr;
-    
-        hPtr = Blt_FindHashEntry(&viewPtr->columnTable, 
-                Blt_Tree_GetKey(viewPtr->tree, string));
-        if (hPtr == NULL) {
-            if (interp != NULL) {
-                Tcl_AppendResult(interp, "can't find column \"", string, 
-                        "\" in \"", Tk_PathName(viewPtr->tkwin), "\"", 
-                        (char *)NULL);
-            }
-            return TCL_ERROR;
-        } 
-        *colPtrPtr = Blt_GetHashValue(hPtr);
+	if (interp != NULL) {
+	    Tcl_AppendResult(interp, "bad column index \"", string, "\"",
+			     (char *)NULL);
+	}
+	return TCL_ERROR;
     }
     return TCL_OK;
 }
 
+static Column *
+GetColumnByName(TreeView *viewPtr, const char *string)
+{
+    Blt_HashEntry *hPtr;
+    
+    hPtr = Blt_FindHashEntry(&viewPtr->columnTable, 
+			     Blt_Tree_GetKey(viewPtr->tree, string));
+    if (hPtr == NULL) {
+	return NULL;
+    } 
+    return Blt_GetHashValue(hPtr);
+}
+
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * NextTaggedColumn --
+ *
+ *      Returns the next column derived from the given tag.
+ *
+ * Results:
+ *      Returns the pointer to the next column in the iterator.  If no more
+ *      columns are available, then NULL is returned.
+ *
+ *---------------------------------------------------------------------------
+ */
+static Column *
+NextTaggedColumn(ColumnIterator *iterPtr)
+{
+    switch (iterPtr->type) {
+    case ITER_TAG:
+        if (iterPtr->link != NULL) {
+            Column *colPtr;
+            
+            colPtr = Blt_Chain_GetValue(iterPtr->link);
+            iterPtr->link = Blt_Chain_NextLink(iterPtr->link);
+            return colPtr;
+        }
+        break;
+
+    case ITER_ALL:
+        {
+            Blt_HashEntry *hPtr;
+            
+            hPtr = Blt_NextHashEntry(&iterPtr->cursor); 
+            if (hPtr != NULL) {
+                return Blt_GetHashValue(hPtr);
+            }
+            break;
+        }
+
+    default:
+        break;
+    }   
+    return NULL;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * FirstTaggedColumn --
+ *
+ *      Returns the first column derived from the given tag.
+ *
+ * Results:
+ *      Returns the first column in the sequence.  If no more columns are in
+ *      the list, then NULL is returned.
+ *
+ *---------------------------------------------------------------------------
+ */
+static Column *
+FirstTaggedColumn(ColumnIterator *iterPtr)
+{
+    switch (iterPtr->type) {
+    case ITER_TAG:
+        if (iterPtr->link != NULL) {
+            Column *colPtr;
+            
+            colPtr = Blt_Chain_GetValue(iterPtr->link);
+            iterPtr->link = Blt_Chain_NextLink(iterPtr->link);
+            return colPtr;
+        }
+        break;
+    case ITER_ALL:
+        {
+            Blt_HashEntry *hPtr;
+            
+            hPtr = Blt_FirstHashEntry(iterPtr->tablePtr, &iterPtr->cursor);
+            if (hPtr != NULL) {
+                return Blt_GetHashValue(hPtr);
+            }
+        }
+        break;
+
+    case ITER_SINGLE:
+        return iterPtr->startPtr;
+    } 
+    return NULL;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * GetColumnIterator --
+ *
+ *      Converts a string representing a column index into a column
+ *      pointer.  The colName may be in one of the following forms:
+ *
+ *       "all"          All columns.
+ *       name           Name of the column.
+ *       tag            Tag associated with columns.
+ *
+ *---------------------------------------------------------------------------
+ */
+static int
+GetColumnIterator(Tcl_Interp *interp, TreeView *viewPtr, Tcl_Obj *objPtr,
+                  ColumnIterator *iterPtr)
+{
+    const char *string;
+    char c;
+    int numBytes, length;
+
+    iterPtr->type = ITER_SINGLE;
+    iterPtr->tagName = Tcl_GetStringFromObj(objPtr, &numBytes);
+    iterPtr->link = NULL;
+    iterPtr->nextPtr = NULL;
+    iterPtr->startPtr = iterPtr->endPtr = NULL;
+
+    string = Tcl_GetStringFromObj(objPtr, &length);
+    c = string[0];
+    if ((c == 'a') && (strcmp(iterPtr->tagName, "all") == 0)) {
+        iterPtr->type  = ITER_ALL;
+        iterPtr->tablePtr = &viewPtr->columnTable;
+    } else if ((c == 'i') && (length > 6) && 
+               (strncmp(string, "index:", 6) == 0)) {
+	Column *colPtr;
+
+        if (GetColumnByIndex(interp, viewPtr, string + 6, length - 6, &colPtr) 
+            != TCL_OK) {
+            return TCL_ERROR;
+        }
+        iterPtr->startPtr = iterPtr->endPtr = colPtr;
+    } else if ((c == 'n') && (length > 5) && 
+               (strncmp(string, "name:", 5) == 0)) {
+	Column *colPtr;
+
+        colPtr = GetColumnByName(viewPtr, string + 5);
+        if (colPtr == NULL) {
+            if (interp != NULL) {
+                Tcl_AppendResult(interp, "can't find a column named \"", 
+			string + 5, "\" in \"", Tk_PathName(viewPtr->tkwin),
+				 "\"", (char *)NULL);
+            }
+            return TCL_ERROR;
+        }
+        iterPtr->startPtr = iterPtr->endPtr = colPtr;
+    } else if ((c == 't') && (length > 4) && 
+               (strncmp(string, "tag:", 4) == 0)) {
+        Blt_Chain chain;
+
+        chain = Blt_Tags_GetItemList(&viewPtr->colTags, string + 4);
+        if (chain == NULL) {
+            return TCL_OK;
+        }
+        iterPtr->tagName = string + 4;
+        iterPtr->link = Blt_Chain_FirstLink(chain);
+        iterPtr->type = ITER_TAG;
+    } else if ((c == 'l') && (length > 6) && 
+               (strncmp(string, "label:", 6) == 0)) {
+	Column *colPtr;
+
+        colPtr = GetColumnByName(viewPtr, string + 6);
+        iterPtr->startPtr = iterPtr->endPtr = colPtr;
+	return TCL_OK;
+
+    } else {
+	Column *colPtr;
+	Blt_Chain chain;
+
+        if (GetColumnByIndex(NULL, viewPtr, string, length, &colPtr) 
+	    == TCL_OK) {
+	    iterPtr->startPtr = iterPtr->endPtr = colPtr;
+	    return TCL_OK;
+	}
+	colPtr = GetColumnByName(viewPtr, string);
+	if (colPtr != NULL) {
+	    iterPtr->startPtr = iterPtr->endPtr = colPtr;
+	    return TCL_OK;
+	}
+	chain = Blt_Tags_GetItemList(&viewPtr->colTags, string);
+	if (chain != NULL) {
+	    iterPtr->tagName = string;
+	    iterPtr->link = Blt_Chain_FirstLink(chain);
+	    iterPtr->type = ITER_TAG;
+	    return TCL_OK;
+	}
+        if (interp != NULL) {
+            Tcl_AppendResult(interp, "can't find column index, name, or tag \"",
+                string, "\" in \"", Tk_PathName(viewPtr->tkwin), "\"", 
+                             (char *)NULL);
+        }
+        return TCL_ERROR;
+    }   
+    return TCL_OK;
+}
+
+static int
+GetColumnFromObj(Tcl_Interp *interp, TreeView *viewPtr, Tcl_Obj *objPtr, 
+          Column **colPtrPtr)
+{
+    ColumnIterator iter;
+    Column *firstPtr;
+
+    if (GetColumnIterator(interp, viewPtr, objPtr, &iter) != TCL_OK) {
+        return TCL_ERROR;
+    }
+    firstPtr = FirstTaggedColumn(&iter);
+    if (firstPtr != NULL) {
+        Column *nextPtr;
+
+        nextPtr = NextTaggedColumn(&iter);
+        if (nextPtr != NULL) {
+            if (interp != NULL) {
+                Tcl_AppendResult(interp, "multiple column specified by \"", 
+                        Tcl_GetString(objPtr), "\"", (char *)NULL);
+            }
+            return TCL_ERROR;
+        }
+    }
+    *colPtrPtr = firstPtr;
+    return TCL_OK;
+}
 
 static void
 TraceColumn(TreeView *viewPtr, Column *colPtr)
@@ -2746,7 +3044,7 @@ ObjToStyles(ClientData clientData, Tcl_Interp *interp, Tk_Window tkwin,
         Column *colPtr;
         const char *string;
         
-        if (GetColumn(interp, viewPtr, objv[i], &colPtr)!=TCL_OK) {
+        if (GetColumnFromObj(interp, viewPtr, objv[i], &colPtr)!=TCL_OK) {
             return TCL_ERROR;
         }
         cellPtr = GetCell(entryPtr, colPtr);
@@ -3260,7 +3558,7 @@ ObjToSortMark(ClientData clientData, Tcl_Interp *interp, Tk_Window tkwin,
     if (string[0] == '\0') {
         *colPtrPtr = NULL;              /* Don't display mark. */
     } else {
-        if (GetColumn(interp, viewPtr, objPtr, colPtrPtr) != TCL_OK) {
+        if (GetColumnFromObj(interp, viewPtr, objPtr, colPtrPtr) != TCL_OK) {
             return TCL_ERROR;
         }
     }
@@ -3336,7 +3634,7 @@ ObjToSortColumns(ClientData clientData, Tcl_Interp *interp, Tk_Window tkwin,
     for (i = 0; i < objc; i++) {
         Column *colPtr;
 
-        if (GetColumn(interp, viewPtr, objv[i], &colPtr) != TCL_OK) {
+        if (GetColumnFromObj(interp, viewPtr, objv[i], &colPtr) != TCL_OK) {
             return TCL_ERROR;
         }
         if (colPtr == NULL) {
@@ -3429,7 +3727,7 @@ ObjToData(ClientData clientData, Tcl_Interp *interp, Tk_Window tkwin,
         Column *colPtr;
         TreeView *viewPtr = entryPtr->viewPtr;
 
-        if (GetColumn(interp, viewPtr, objv[i], &colPtr) != TCL_OK) {
+        if (GetColumnFromObj(interp, viewPtr, objv[i], &colPtr) != TCL_OK) {
             return TCL_ERROR;
         }
         if (colPtr == NULL) {
@@ -4708,7 +5006,7 @@ GetCellFromObj(Tcl_Interp *interp, TreeView *viewPtr, Tcl_Obj *objPtr,
         return TCL_ERROR;
     }
     if ((GetEntry(interp, viewPtr, objv[0], &entryPtr) != TCL_OK) ||
-        (GetColumn(interp, viewPtr, objv[1], &colPtr) != TCL_OK)) {
+        (GetColumnFromObj(interp, viewPtr, objv[1], &colPtr) != TCL_OK)) {
         return TCL_ERROR;
     }
     if ((colPtr != NULL) && (entryPtr != NULL)) {
@@ -5640,12 +5938,12 @@ ConfigureColumn(TreeView *viewPtr, Column *colPtr)
         colPtr->titleWidth += iw;
     }
     tw = th = 0;
-    if (colPtr->text != NULL) {
+    if (colPtr->titleText != NULL) {
         TextStyle ts;
 
         Blt_Ts_InitStyle(ts);
         Blt_Ts_SetFont(ts, colPtr->titleFont);
-        Blt_Ts_GetExtents(&ts, colPtr->text,  &tw, &th);
+        Blt_Ts_GetExtents(&ts, colPtr->titleText,  &tw, &th);
         colPtr->textWidth = tw;
         colPtr->textHeight = th;
         colPtr->titleWidth += tw;
@@ -5797,7 +6095,7 @@ InitColumn(TreeView *viewPtr, Column *colPtr, const char *name,
     int isNew;
 
     colPtr->key = Blt_Tree_GetKey(viewPtr->tree, name);
-    colPtr->text = Blt_AssertStrdup(defTitle);
+    colPtr->titleText = Blt_AssertStrdup(defTitle);
     colPtr->justify = TK_JUSTIFY_CENTER;
     colPtr->relief = TK_RELIEF_FLAT;
     colPtr->borderWidth = 0;
@@ -6286,6 +6584,7 @@ NewView(Tcl_Interp *interp, Tcl_Obj *objPtr)
     Blt_InitHashTable(&viewPtr->iconTable, BLT_STRING_KEYS);
     Blt_InitHashTable(&viewPtr->cachedObjTable, BLT_STRING_KEYS);
     Blt_InitHashTable(&viewPtr->styleTable, BLT_STRING_KEYS);
+    Blt_Tags_Init(&viewPtr->colTags);
     viewPtr->bindTable = Blt_CreateBindingTable(interp, tkwin, viewPtr, 
         PickItem, AppendTagsProc);
     Blt_InitHashTable(&viewPtr->bindTagTable,
@@ -6445,6 +6744,7 @@ DestroyTreeView(DestroyData dataPtr)    /* Pointer to the widget record. */
     if (viewPtr->comboWin != NULL) {
         Tk_DestroyWindow(viewPtr->comboWin);
     }
+    Blt_Tags_Init(&viewPtr->colTags);
     Blt_DeleteHashTable(&viewPtr->styleTable);
     Blt_DeleteHashTable(&viewPtr->sel.table);
     Blt_DeleteHashTable(&viewPtr->cachedObjTable);
@@ -8466,7 +8766,8 @@ DrawColumnTitle(TreeView *viewPtr, Column *colPtr, Drawable drawable,
         Blt_Ts_SetFont(ts, colPtr->titleFont);
         Blt_Ts_SetForeground(ts, fg);
         Blt_Ts_SetMaxLength(ts, maxLength);
-        Blt_Ts_DrawText(viewPtr->tkwin, drawable, colPtr->text, -1, &ts, x, ty);
+        Blt_Ts_DrawText(viewPtr->tkwin, drawable, colPtr->titleText, -1, &ts, 
+		x, ty);
         x += MIN(colPtr->textWidth, maxLength);
     }
     if (needArrow) {
@@ -9271,7 +9572,7 @@ ButtonCgetOp(ClientData clientData, Tcl_Interp *interp, int objc,
  *      database, in order to reconfigure the one of more entries in the
  *      widget.
  *
- *        .h button configure option value
+ *        pathName button configure option value
  *
  * Results:
  *      A standard TCL result.  If TCL_ERROR is returned, then interp->result
@@ -9376,6 +9677,8 @@ ButtonContainsOp(ClientData clientData, Tcl_Interp *interp, int objc,
  *
  * Results:
  *      A standard TCL result.
+ *
+ *	pathName button bind tagName sequence command
  *
  *---------------------------------------------------------------------------
  */
@@ -10170,49 +10473,6 @@ CloseOp(ClientData clientData, Tcl_Interp *interp, int objc,
 /*
  *---------------------------------------------------------------------------
  *
- * ColumnActivateOp --
- *
- *      Selects the button to appear active.
- *
- *---------------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static int
-ColumnActivateOp(ClientData clientData, Tcl_Interp *interp, int objc, 
-                 Tcl_Obj *const *objv)
-{
-    TreeView *viewPtr = clientData;
-    Column *colPtr, *activePtr;
-    
-    if (GetColumn(interp, viewPtr, objv[3], &colPtr) != TCL_OK) {
-        return TCL_ERROR;
-    }
-    if (colPtr == NULL) {
-        return TCL_OK;
-    }
-    if ((colPtr->flags & HIDDEN) || (colPtr->state == STATE_DISABLED)) {
-        return TCL_OK;
-    }
-    activePtr = viewPtr->colActiveTitlePtr;
-    viewPtr->colActiveTitlePtr = viewPtr->colActivePtr = colPtr;
-
-    /* If we aren't already queued to redraw the widget, try to directly draw
-     * into window. */
-    if ((viewPtr->flags & REDRAW_PENDING) == 0) {
-        Drawable drawable;
-
-        drawable = Tk_WindowId(viewPtr->tkwin);
-        if (activePtr != NULL) {
-            DisplayColumnTitle(viewPtr, activePtr, drawable);
-        }
-        DisplayColumnTitle(viewPtr, colPtr, drawable);
-    }
-    return TCL_OK;
-}
-
-/*
- *---------------------------------------------------------------------------
- *
  * ColumnBindOp --
  *
  *        pathName column bind tag type sequence command
@@ -10245,8 +10505,17 @@ ColumnBindOp(ClientData clientData, Tcl_Interp *interp, int objc,
                          (char *)NULL);
         return TCL_ERROR;
     }
-    if ((GetColumn(NULL, viewPtr, objv[3], &colPtr) == TCL_OK) && 
-        (colPtr != NULL)) {
+    /* Bind tags are either node ids (numbers) or arbitary strings (not to
+     * be confused with tree node tags). */
+    if (Blt_ObjIsInteger(objv[3])) {
+	Entry *entryPtr;
+
+	if (GetColumnFromObj(interp, viewPtr, objv[3], &colPtr) != TCL_OK) {
+	    return TCL_ERROR;
+	}
+        if (colPtr == NULL) {
+            return TCL_OK;      /* Special id doesn't currently exist. */
+        }
         tag = MakeBindTag(viewPtr, colPtr, type);
     } else {
         tag = MakeStringBindTag(viewPtr, Tcl_GetString(objv[3]), type);
@@ -10270,7 +10539,7 @@ ColumnCgetOp(ClientData clientData, Tcl_Interp *interp, int objc,
     TreeView *viewPtr = clientData;
     Column *colPtr;
 
-    if (GetColumn(interp, viewPtr, objv[3], &colPtr) != TCL_OK){
+    if (GetColumnFromObj(interp, viewPtr, objv[3], &colPtr) != TCL_OK){
         return TCL_ERROR;
     }
     if (colPtr == NULL) {
@@ -10298,7 +10567,7 @@ ColumnCgetOp(ClientData clientData, Tcl_Interp *interp, int objc,
  *      etc. get set for viewPtr; old resources get freed, if there
  *      were any.  The hypertext is redisplayed.
  *
- *      pathName column configure col ?option value?
+ *      pathName column configure colName ?option value?
  *---------------------------------------------------------------------------
  */
 static int
@@ -10307,30 +10576,43 @@ ColumnConfigureOp(ClientData clientData, Tcl_Interp *interp, int objc,
 {
     TreeView *viewPtr = clientData;
     Column *colPtr;
+    ColumnIterator iter;
 
     cachedObjOption.clientData = viewPtr;
     iconOption.clientData = viewPtr;
     styleOption.clientData = viewPtr;
-
-    if (GetColumn(interp, viewPtr, objv[3], &colPtr) != TCL_OK) {
-        return TCL_ERROR;
-    }
-    if (colPtr == NULL) {
-        return TCL_OK;
-    }
     if (objc == 4) {
+        if (GetColumnFromObj(interp, viewPtr, objv[3], &colPtr) != TCL_OK) {
+            return TCL_ERROR;
+        }
+	if (colPtr == NULL) {
+	    return TCL_OK;
+	}
         return Blt_ConfigureInfoFromObj(interp, viewPtr->tkwin, columnSpecs, 
-                (char *)colPtr, (Tcl_Obj *)NULL, 0);
+		(char *)colPtr, (Tcl_Obj *)NULL, 0);
     } else if (objc == 5) {
+        if (GetColumnFromObj(interp, viewPtr, objv[3], &colPtr) != TCL_OK) {
+            return TCL_ERROR;
+        }
+	if (colPtr == NULL) {
+	    return TCL_OK;
+	}
         return Blt_ConfigureInfoFromObj(interp, viewPtr->tkwin, columnSpecs, 
-                (char *)colPtr, objv[4], 0);
+		(char *)colPtr, objv[4], 0);
     }
-    if (Blt_ConfigureWidgetFromObj(viewPtr->interp, viewPtr->tkwin, columnSpecs,
-        objc - 4, objv + 4, (char *)colPtr, BLT_CONFIG_OBJV_ONLY) != TCL_OK) {
-        return TCL_ERROR;
+    if (GetColumnIterator(interp, viewPtr, objv[3], &iter) != TCL_OK) {
+	return TCL_ERROR;
     }
-    ConfigureColumn(viewPtr, colPtr);
+    for (colPtr = FirstTaggedColumn(&iter); colPtr != NULL; 
+         colPtr = NextTaggedColumn(&iter)) {
 
+	if (Blt_ConfigureWidgetFromObj(interp, viewPtr->tkwin, columnSpecs,
+	       objc - 4, objv + 4, (char *)colPtr, BLT_CONFIG_OBJV_ONLY) 
+	    != TCL_OK) {
+	    return TCL_ERROR;
+	}
+	ConfigureColumn(viewPtr, colPtr);
+    }
     if (Blt_ConfigModified(columnSpecs, "-*borderwidth", "-formatcommand",
                            "-hide", "-icon", "-pad", "-rulewidth",
                            "-show", "-text", "-style", "-title", "-titlefont",
@@ -10339,39 +10621,6 @@ ColumnConfigureOp(ClientData clientData, Tcl_Interp *interp, int objc,
         viewPtr->flags |= LAYOUT_PENDING;
     }
     EventuallyRedraw(viewPtr);
-    return TCL_OK;
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * ColumnDeactivateOp --
- *
- *      Deactivates all columns.  All column titles will be redraw in their
- *      normal foreground/background colors.
- *
- *---------------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static int
-ColumnDeactivateOp(ClientData clientData, Tcl_Interp *interp, int objc, 
-                   Tcl_Obj *const *objv)
-{
-    TreeView *viewPtr = clientData;
-    Column *activePtr;
-
-    activePtr = viewPtr->colActiveTitlePtr;
-    viewPtr->colActiveTitlePtr = viewPtr->colActivePtr = NULL;
-    /* If we aren't already queued to redraw the widget, try to directly draw
-     * into window. */
-    if ((viewPtr->flags & REDRAW_PENDING) == 0) {
-        if (activePtr != NULL) {
-            Drawable drawable;
-
-            drawable = Tk_WindowId(viewPtr->tkwin);
-            DisplayColumnTitle(viewPtr, activePtr, drawable);
-        }
-    }
     return TCL_OK;
 }
 
@@ -10395,7 +10644,7 @@ ColumnDeleteOp(ClientData clientData, Tcl_Interp *interp, int objc,
         Column *colPtr;
         Entry *entryPtr;
 
-        if (GetColumn(interp, viewPtr, objv[i], &colPtr) != TCL_OK) {
+        if (GetColumnFromObj(interp, viewPtr, objv[i], &colPtr) != TCL_OK) {
             return TCL_ERROR;
         }
         if (colPtr == NULL) {
@@ -10456,7 +10705,7 @@ ColumnExistsOp(ClientData clientData, Tcl_Interp *interp, int objc,
     Column *colPtr;
 
     exists = FALSE;
-    if ((GetColumn(NULL, viewPtr, objv[3], &colPtr) == TCL_OK) &&
+    if ((GetColumnFromObj(NULL, viewPtr, objv[3], &colPtr) == TCL_OK) &&
         (colPtr != NULL)) {
         exists = TRUE;
     }
@@ -10486,7 +10735,7 @@ ColumnIndexOp(ClientData clientData, Tcl_Interp *interp, int objc,
     Column *colPtr;
 
     index = -1;
-    if ((GetColumn(NULL, viewPtr, objv[3], &colPtr) == TCL_OK) &&
+    if ((GetColumnFromObj(NULL, viewPtr, objv[3], &colPtr) == TCL_OK) &&
         (colPtr != NULL)) {
         index = colPtr->index;
     }
@@ -10524,7 +10773,7 @@ ColumnInsertOp(ClientData clientData, Tcl_Interp *interp, int objc,
     } else {
         before =  Blt_Chain_GetNthLink(viewPtr->columns, insertPos);
     }
-    if (GetColumn(NULL, viewPtr, objv[4], &colPtr) == TCL_OK) {
+    if (GetColumnFromObj(NULL, viewPtr, objv[4], &colPtr) == TCL_OK) {
         Tcl_AppendResult(interp, "column \"", Tcl_GetString(objv[4]), 
                          "\" already exists", (char *)NULL);
         return TCL_ERROR;
@@ -10582,71 +10831,11 @@ ColumnCurrentOp(ClientData clientData, Tcl_Interp *interp, int objc,
 /*
  *---------------------------------------------------------------------------
  *
- * ColumnInvokeOp --
- *
- *      This procedure is called to invoke a column command.
- *
- *        .h column invoke columnName
- *
- * Results:
- *      A standard TCL result.  If TCL_ERROR is returned, then
- *      interp->result contains an error message.
- *
- *---------------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static int
-ColumnInvokeOp(ClientData clientData, Tcl_Interp *interp, int objc, 
-               Tcl_Obj *const *objv)
-{
-    TreeView *viewPtr = clientData;
-    Column *colPtr;
-    char *string;
-    Tcl_Obj *cmdObjPtr;
-
-    string = Tcl_GetString(objv[3]);
-    if (string[0] == '\0') {
-        return TCL_OK;
-    }
-    if (GetColumn(interp, viewPtr, objv[3], &colPtr) != TCL_OK){
-        return TCL_ERROR;
-    }
-    if (colPtr == NULL) {
-        return TCL_OK;
-    }
-    cmdObjPtr = colPtr->cmdObjPtr;
-    if (cmdObjPtr == NULL) {
-        cmdObjPtr = viewPtr->colCmdObjPtr;
-    }
-    if ((colPtr->state == STATE_NORMAL) && (cmdObjPtr != NULL)) {
-        int result;
-        Tcl_Obj *objPtr;
-
-        cmdObjPtr = Tcl_DuplicateObj(cmdObjPtr);
-        objPtr = Tcl_NewStringObj(Tk_PathName(viewPtr->tkwin), -1);
-        Tcl_ListObjAppendElement(viewPtr->interp, cmdObjPtr, objPtr);
-        objPtr = Tcl_NewStringObj(colPtr->key, -1);
-        Tcl_ListObjAppendElement(viewPtr->interp, cmdObjPtr, objPtr);
-        Tcl_Preserve(viewPtr);
-        Tcl_Preserve(colPtr);
-        Tcl_IncrRefCount(cmdObjPtr);
-        result = Tcl_EvalObjEx(viewPtr->interp, cmdObjPtr, TCL_EVAL_GLOBAL);
-        Tcl_DecrRefCount(cmdObjPtr);
-        Tcl_Release(colPtr);
-        Tcl_Release(viewPtr);
-        return result;
-    }
-    return TCL_OK;
-}
-
-/*
- *---------------------------------------------------------------------------
- *
  * ColumnMoveOp --
  *
  *      Move a column.
  *
- * .h column move field1 position
+ * pathName column move field1 position
  *---------------------------------------------------------------------------
  */
 
@@ -10699,7 +10888,7 @@ ColumnNamesOp(ClientData clientData, Tcl_Interp *interp, int objc,
 /*
  *---------------------------------------------------------------------------
  *
- * ColumnNamesOp --
+ * ColumnNearestOp --
  *
  *      pathName column nearest x y ?switches ...?
  *---------------------------------------------------------------------------
@@ -10794,7 +10983,7 @@ UpdateMark(TreeView *viewPtr, int newMark)
  *
  *      Turns on/off the resize cursor.
  *
- *      $t column resize activate $col
+ *      pathName column resize activate $col
  *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
@@ -10805,7 +10994,7 @@ ColumnResizeActivateOp(ClientData clientData, Tcl_Interp *interp, int objc,
     TreeView *viewPtr = clientData;
     Column *colPtr;
 
-    if (GetColumn(interp, viewPtr, objv[4], &colPtr) != TCL_OK) {
+    if (GetColumnFromObj(interp, viewPtr, objv[4], &colPtr) != TCL_OK) {
         return TCL_ERROR;
     }
     if (viewPtr->resizeCursor != None) {
@@ -10822,7 +11011,7 @@ ColumnResizeActivateOp(ClientData clientData, Tcl_Interp *interp, int objc,
  *
  *      Set the anchor for the resize.
  *
- *      $t column resize anchor $x
+ *      pathName column resize anchor $x
  *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
@@ -10845,11 +11034,51 @@ ColumnResizeAnchorOp(ClientData clientData, Tcl_Interp *interp, int objc,
 /*
  *---------------------------------------------------------------------------
  *
+ * ColumnResizeBindOp --
+ *
+ *        pathName column resize bind tagName sequence command
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static int
+ColumnResizeBindOp(ClientData clientData, Tcl_Interp *interp, int objc, 
+             Tcl_Obj *const *objv)
+{
+    BindTag tag;
+    TreeView *viewPtr = clientData;
+    ItemType item;
+
+    item = ITEM_COLUMN_RESIZE;
+    /* Bind tags are either node ids (numbers) or arbitary strings (not to
+     * be confused with tree node tags). */
+    if (Blt_ObjIsInteger(objv[4])) {
+	Entry *entryPtr;
+
+	if (GetEntry(interp, viewPtr, objv[4], &entryPtr) != TCL_OK) {
+	    return TCL_ERROR;
+	}
+        if (entryPtr == NULL) {
+            return TCL_OK;      /* Special id doesn't currently exist. */
+        }
+        tag = MakeBindTag(viewPtr, entryPtr, item);
+    } else {
+        tag = MakeStringBindTag(viewPtr, Tcl_GetString(objv[4]), item);
+    } 
+    /* Assume that this is a binding tag. */
+    return Blt_ConfigureBindingsFromObj(interp, viewPtr->bindTable, tag, 
+        objc - 5, objv + 5);
+}
+
+
+/*
+ *---------------------------------------------------------------------------
+ *
  * ColumnResizeDectivateOp --
  *
  *      Turns off the resize cursor.
  *
- *      $t column resize deactivate
+ *      pathName column resize deactivate
  *
  *---------------------------------------------------------------------------
  */
@@ -10928,6 +11157,7 @@ static Blt_OpSpec columnResizeOps[] =
 { 
     {"activate",   2, ColumnResizeActivateOp,   5, 5, "column",},
     {"anchor",     2, ColumnResizeAnchorOp,     5, 5, "x",},
+    {"bind",       1, ColumnResizeBindOp,       5, 7, "tagName ?sequence command?",},
     {"deactivate", 1, ColumnResizeDeactivateOp, 4, 4, "",},
     {"mark",       1, ColumnResizeMarkOp,       5, 5, "x",},
     {"set",        1, ColumnResizeSetOp,        4, 4, "",},
@@ -10959,23 +11189,775 @@ ColumnResizeOp(ClientData clientData, Tcl_Interp *interp, int objc,
 }
 
 
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ColumnTagAddOp --
+ *
+ *      pathName column tag add tagName colName
+ *---------------------------------------------------------------------------
+ */
+static int
+ColumnTagAddOp(ClientData clientData, Tcl_Interp *interp, int objc, 
+	       Tcl_Obj *const *objv)
+{
+    TreeView *viewPtr = clientData;
+    char c;
+    const char *string;
+
+    string = Tcl_GetString(objv[4]);
+    c = string[0];
+    if ((isdigit(c)) && (Blt_ObjIsInteger(objv[4]))) {
+        Tcl_AppendResult(interp, "bad tag \"", string, 
+                 "\": can't be a number.", (char *)NULL);
+        return TCL_ERROR;
+    }
+    if ((c == 'a') && (strcmp(string, "all") == 0)) {
+        Tcl_AppendResult(interp, "can't add reserved tag \"", string, "\"", 
+                         (char *)NULL);
+        return TCL_ERROR;
+    }
+    if (objc == 5) {
+        /* No nodes specified.  Just add the tag. */
+        Blt_Tags_AddTag(&viewPtr->colTags, string);
+    } else {
+        int i;
+
+        for (i = 5; i < objc; i++) {
+            Column *colPtr;
+            ColumnIterator iter;
+            
+            if (GetColumnIterator(interp, viewPtr, objv[i], &iter) != TCL_OK) {
+                return TCL_ERROR;
+            }
+            for (colPtr = FirstTaggedColumn(&iter); colPtr != NULL; 
+                 colPtr = NextTaggedColumn(&iter)) {
+                Blt_Tags_AddItemToTag(&viewPtr->colTags, string, colPtr);
+            }
+        }
+    }
+    return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ColumnTagDeleteOp --
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static int
+ColumnTagDeleteOp(ClientData clientData, Tcl_Interp *interp, int objc, 
+		 Tcl_Obj *const *objv)
+{
+    TreeView *viewPtr = clientData;
+    char *string;
+    int i;
+    char c;
+
+    string = Tcl_GetString(objv[4]);
+    c = string[0];
+    if ((isdigit(c)) && (Blt_ObjIsInteger(objv[4]))) {
+        Tcl_AppendResult(interp, "bad tag \"", string, 
+                 "\": can't be a number.", (char *)NULL);
+        return TCL_ERROR;
+    }
+    if ((c == 'a') && (strcmp(string, "all") == 0)) {
+        Tcl_AppendResult(interp, "can't delete reserved tag \"", string, "\"", 
+                         (char *)NULL);
+        return TCL_ERROR;
+    }
+    for (i = 5; i < objc; i++) {
+        Column *colPtr;
+        ColumnIterator iter;
+        
+        if (GetColumnIterator(interp, viewPtr, objv[i], &iter) != TCL_OK) {
+            return TCL_ERROR;
+        }
+        for (colPtr = FirstTaggedColumn(&iter); colPtr != NULL; 
+             colPtr = NextTaggedColumn(&iter)) {
+            Blt_Tags_RemoveItemFromTag(&viewPtr->colTags, string, colPtr);
+        }
+    }
+    return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ColumnTagExistsOp --
+ *
+ *      Returns the existence of the one or more tags in the given node.
+ *      If the node has any the tags, true is return in the interpreter.
+ *
+ *      pathName column tag exists colName ?tagName ...?
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static int
+ColumnTagExistsOp(ClientData clientData, Tcl_Interp *interp, int objc,
+            Tcl_Obj *const *objv)
+{
+    ColumnIterator iter;
+    TreeView *viewPtr = clientData;
+    int i;
+
+    if (GetColumnIterator(interp, viewPtr, objv[4], &iter) != TCL_OK) {
+        return TCL_ERROR;
+    }
+    for (i = 5; i < objc; i++) {
+        Column *colPtr;
+        const char *tag;
+
+        tag = Tcl_GetString(objv[i]);
+        for (colPtr = FirstTaggedColumn(&iter); colPtr != NULL; 
+             colPtr = NextTaggedColumn(&iter)) {
+            if (Blt_Tags_ItemHasTag(&viewPtr->colTags, colPtr, tag)) {
+                Tcl_SetBooleanObj(Tcl_GetObjResult(interp), TRUE);
+                return TCL_OK;
+            }
+        }
+    }
+    Tcl_SetBooleanObj(Tcl_GetObjResult(interp), FALSE);
+    return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ColumnTagForgetOp --
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static int
+ColumnTagForgetOp(ClientData clientData, Tcl_Interp *interp, int objc, 
+		 Tcl_Obj *const *objv)
+{
+    TreeView *viewPtr = clientData;
+    int i;
+
+    for (i = 4; i < objc; i++) {
+        const char *string;
+        char c;
+        
+        string = Tcl_GetString(objv[i]);
+        c = string[0];
+        if ((isdigit(c)) && (Blt_ObjIsInteger(objv[i]))) {
+            Tcl_AppendResult(interp, "bad tag \"", string, 
+                             "\": can't be a number.", (char *)NULL);
+            return TCL_ERROR;
+        }
+        Blt_Tags_ForgetTag(&viewPtr->colTags, string);
+    }
+    return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ColumnTagGetOp --
+ *
+ *      Returns tag names for a given column.  If one of more pattern
+ *      arguments are provided, then only those matching tags are returned.
+ *
+ *      pathName column tag get colName ?pattern ...?
+ *
+ *---------------------------------------------------------------------------
+ */
+static int
+ColumnTagGetOp(ClientData clientData, Tcl_Interp *interp, int objc, 
+	       Tcl_Obj *const *objv)
+{
+    TreeView *viewPtr = clientData;
+    Column *colPtr; 
+    ColumnIterator iter;
+    Tcl_Obj *listObjPtr;
+
+    if (GetColumnIterator(interp, viewPtr, objv[4], &iter) != TCL_OK) {
+        return TCL_ERROR;
+    }
+    listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **) NULL);
+    for (colPtr = FirstTaggedColumn(&iter); colPtr != NULL; 
+         colPtr = NextTaggedColumn(&iter)) {
+        if (objc == 5) {
+            Blt_Tags_AppendTagsToObj(&viewPtr->colTags, colPtr, listObjPtr);
+            Tcl_ListObjAppendElement(interp, listObjPtr, 
+                                     Tcl_NewStringObj("all", 3));
+        } else {
+            int i;
+            
+            /* Check if we need to add the special tags "all" */
+            for (i = 5; i < objc; i++) {
+                const char *pattern;
+
+                pattern = Tcl_GetString(objv[i]);
+                if (Tcl_StringMatch("all", pattern)) {
+                    Tcl_Obj *objPtr;
+
+                    objPtr = Tcl_NewStringObj("all", 3);
+                    Tcl_ListObjAppendElement(interp, listObjPtr, objPtr);
+                    break;
+                }
+            }
+            /* Now process any standard tags. */
+            for (i = 5; i < objc; i++) {
+                Blt_ChainLink link;
+                const char *pattern;
+                Blt_Chain chain;
+
+                chain = Blt_Chain_Create();
+                Blt_Tags_AppendTagsToChain(&viewPtr->colTags, colPtr, chain);
+                pattern = Tcl_GetString(objv[i]);
+                for (link = Blt_Chain_FirstLink(chain); link != NULL; 
+                     link = Blt_Chain_NextLink(link)) {
+                    const char *tag;
+                    Tcl_Obj *objPtr;
+
+                    tag = (const char *)Blt_Chain_GetValue(link);
+                    if (!Tcl_StringMatch(tag, pattern)) {
+                        continue;
+                    }
+                    objPtr = Tcl_NewStringObj(tag, -1);
+                    Tcl_ListObjAppendElement(interp, listObjPtr, objPtr);
+                }
+                Blt_Chain_Destroy(chain);
+            }
+        }    
+    }
+    Tcl_SetObjResult(interp, listObjPtr);
+    return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ColumnTagNamesOp --
+ *
+ *	pathName column tag names ?colName ...?
+ *
+ *---------------------------------------------------------------------------
+ */
+static int
+ColumnTagNamesOp(ClientData clientData, Tcl_Interp *interp, int objc, 
+		Tcl_Obj *const *objv)
+{
+    TreeView *viewPtr = clientData;
+    Tcl_Obj *listObjPtr, *objPtr;
+
+    listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **) NULL);
+    objPtr = Tcl_NewStringObj("all", -1);
+    Tcl_ListObjAppendElement(interp, listObjPtr, objPtr);
+    if (objc == 4) {
+        Blt_Tags_AppendAllTagsToObj(&viewPtr->colTags, listObjPtr);
+    } else {
+        Blt_HashTable uniqTable;
+        int i;
+
+        Blt_InitHashTable(&uniqTable, BLT_STRING_KEYS);
+        for (i = 4; i < objc; i++) {
+            ColumnIterator iter;
+            Column *colPtr;
+
+            if (GetColumnIterator(interp, viewPtr, objPtr, &iter) != TCL_OK) {
+                goto error;
+            }
+            for (colPtr = FirstTaggedColumn(&iter); colPtr != NULL; 
+                 colPtr = NextTaggedColumn(&iter)) {
+                Blt_ChainLink link;
+                Blt_Chain chain;
+
+                chain = Blt_Chain_Create();
+                Blt_Tags_AppendTagsToChain(&viewPtr->colTags, colPtr, chain);
+                for (link = Blt_Chain_FirstLink(chain); link != NULL; 
+                     link = Blt_Chain_NextLink(link)) {
+                    const char *tag;
+                    int isNew;
+
+                    tag = Blt_Chain_GetValue(link);
+                    Blt_CreateHashEntry(&uniqTable, tag, &isNew);
+                }
+                Blt_Chain_Destroy(chain);
+            }
+        }
+        {
+            Blt_HashEntry *hPtr;
+            Blt_HashSearch hiter;
+
+            for (hPtr = Blt_FirstHashEntry(&uniqTable, &hiter); hPtr != NULL;
+                 hPtr = Blt_NextHashEntry(&hiter)) {
+                objPtr = Tcl_NewStringObj(Blt_GetHashKey(&uniqTable, hPtr), -1);
+                Tcl_ListObjAppendElement(interp, listObjPtr, objPtr);
+            }
+        }
+        Blt_DeleteHashTable(&uniqTable);
+    }
+    Tcl_SetObjResult(interp, listObjPtr);
+    return TCL_OK;
+ error:
+    Tcl_DecrRefCount(listObjPtr);
+    return TCL_ERROR;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ColumnTagSetOp --
+ *
+ *      Sets one or more tags for a given node.  Tag names can't start with
+ *      a digit (to distinquish them from node ids) and can't be a reserved
+ *      tag ("root" or "all").
+ *
+ *      pathName column tag set colName ?tag1 tag2 ...?
+ *
+ *---------------------------------------------------------------------------
+ */
+static int
+ColumnTagSetOp(ClientData clientData, Tcl_Interp *interp, int objc,
+	       Tcl_Obj *const *objv)
+{
+    TreeView *viewPtr = clientData;
+    int i;
+    ColumnIterator iter;
+
+    if (GetColumnIterator(interp, viewPtr, objv[4], &iter) != TCL_OK) {
+        return TCL_ERROR;
+    }
+    for (i = 5; i < objc; i++) {
+        Column *colPtr;
+        char c;
+        const char *string;
+
+        string = Tcl_GetString(objv[i]);
+        c = string[0];
+        if ((isdigit(c)) && (Blt_ObjIsInteger(objv[i]))) {
+            Tcl_AppendResult(interp, "bad tag \"", string, 
+                             "\": can't be a number.", (char *)NULL);
+            return TCL_ERROR;
+        }
+        if ((c == 'a') && (strcmp(string, "all") == 0)) {
+            Tcl_AppendResult(interp, "can't add reserved tag \"", string, "\"",
+                             (char *)NULL);     
+            return TCL_ERROR;
+        }
+        for (colPtr = FirstTaggedColumn(&iter); colPtr != NULL; 
+             colPtr = NextTaggedColumn(&iter)) {
+            Blt_Tags_AddItemToTag(&viewPtr->colTags, string, colPtr);
+        }    
+    }
+    return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * TagUnsetOp --
+ *
+ *      Removes one or more tags from a given node. If a tag doesn't exist
+ *      or is a reserved tag ("root" or "all"), nothing will be done and no
+ *      error message will be returned.
+ *
+ *      pathname column tag unset colName tag1 tag2...
+ *
+ *---------------------------------------------------------------------------
+ */
+static int
+ColumnTagUnsetOp(ClientData clientData, Tcl_Interp *interp, int objc,
+		 Tcl_Obj *const *objv)
+{
+    Column *colPtr;
+    TreeView *viewPtr = clientData;
+    ColumnIterator iter;
+
+    if (GetColumnIterator(interp, viewPtr, objv[4], &iter) != TCL_OK) {
+        return TCL_ERROR;
+    }
+    for (colPtr = FirstTaggedColumn(&iter); colPtr != NULL; 
+         colPtr = NextTaggedColumn(&iter)) {
+	int i;
+
+	for (i = 5; i < objc; i++) {
+	    const char *tag;
+
+	    tag = Tcl_GetString(objv[i]);
+	    Blt_Tags_RemoveItemFromTag(&viewPtr->colTags, tag, colPtr);
+	}    
+    }
+    return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ColumnTagOp --
+ *
+ *---------------------------------------------------------------------------
+ */
+static Blt_OpSpec columnTagOps[] = {
+    {"add",    1, ColumnTagAddOp,    6, 0, "tagName colName...",},
+    {"delete", 1, ColumnTagDeleteOp, 6, 0, "tagName colName...",},
+    {"exists", 1, ColumnTagExistsOp, 4, 5, "tag ?colName?"},
+    {"forget", 1, ColumnTagForgetOp, 5, 0, "tagName...",},
+    {"get",    1, ColumnTagGetOp,    5, 0, "colName ?pattern...?"},
+    {"names",  2, ColumnTagNamesOp,  4, 0, "?colName...?",}, 
+    {"set",    1, ColumnTagSetOp,    5, 0, "colName ?tagName...?"},
+    {"unset",  1, ColumnTagUnsetOp,  5, 0, "colName ?tagName...?"},
+};
+
+static int numColumnTagOps = sizeof(columnTagOps) / sizeof(Blt_OpSpec);
+
+static int
+ColumnTagOp(ClientData clientData, Tcl_Interp *interp, int objc, 
+	   Tcl_Obj *const *objv)
+{
+    int result;
+    Tcl_ObjCmdProc *proc;
+
+    proc = Blt_GetOpFromObj(interp, numColumnTagOps, columnTagOps, BLT_OP_ARG3, 
+			    objc, objv, 0);
+    if (proc == NULL) {
+        return TCL_ERROR;
+    }
+    result = (*proc)(clientData, interp, objc, objv);
+    return result;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ColumnTitleActivateOp --
+ *
+ *      Selects the column title to appear active.
+ *
+ *      pathName column title activate colName
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static int
+ColumnTitleActivateOp(ClientData clientData, Tcl_Interp *interp, int objc, 
+		      Tcl_Obj *const *objv)
+{
+    TreeView *viewPtr = clientData;
+    Column *colPtr, *activePtr;
+    
+    if (GetColumnFromObj(interp, viewPtr, objv[4], &colPtr) != TCL_OK) {
+        return TCL_ERROR;
+    }
+    if (colPtr == NULL) {
+        return TCL_OK;
+    }
+    if ((colPtr->flags & HIDDEN) || (colPtr->state == STATE_DISABLED)) {
+        return TCL_OK;
+    }
+    activePtr = viewPtr->colActiveTitlePtr;
+    viewPtr->colActiveTitlePtr = viewPtr->colActivePtr = colPtr;
+
+    /* If we aren't already queued to redraw the widget, try to directly draw
+     * into window. */
+    if ((viewPtr->flags & REDRAW_PENDING) == 0) {
+        Drawable drawable;
+
+        drawable = Tk_WindowId(viewPtr->tkwin);
+        if (activePtr != NULL) {
+            DisplayColumnTitle(viewPtr, activePtr, drawable);
+        }
+        DisplayColumnTitle(viewPtr, colPtr, drawable);
+    }
+    return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ColumnTitleBindOp --
+ *
+ *        pathName column title bind tagName sequence command
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static int
+ColumnTitleBindOp(ClientData clientData, Tcl_Interp *interp, int objc, 
+		  Tcl_Obj *const *objv)
+{
+    BindTag tag;
+    Column *colPtr;
+    ItemType type;
+    TreeView *viewPtr = clientData;
+    
+    type = ITEM_COLUMN_TITLE;
+    /* Bind tags are either node ids (numbers) or arbitary strings (not to
+     * be confused with tree node tags). */
+    if (Blt_ObjIsInteger(objv[4])) {
+	Entry *entryPtr;
+
+	if (GetColumnFromObj(interp, viewPtr, objv[4], &colPtr) != TCL_OK) {
+	    return TCL_ERROR;
+	}
+        if (colPtr == NULL) {
+            return TCL_OK;      /* Special id doesn't currently exist. */
+        }
+        tag = MakeBindTag(viewPtr, colPtr, type);
+    } else {
+        tag = MakeStringBindTag(viewPtr, Tcl_GetString(objv[4]), type);
+    }
+    return Blt_ConfigureBindingsFromObj(interp, viewPtr->bindTable, tag,
+        objc - 5, objv + 5);
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ColumnTitleCgetOp --
+ *
+ *      pathName column title cget colName option
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static int
+ColumnTitleCgetOp(ClientData clientData, Tcl_Interp *interp, int objc, 
+		  Tcl_Obj *const *objv)
+{
+    TreeView *viewPtr = clientData;
+    Column *colPtr;
+
+    cachedObjOption.clientData = viewPtr;
+    iconOption.clientData = viewPtr;
+    styleOption.clientData = viewPtr;
+
+    if (GetColumnFromObj(interp, viewPtr, objv[4], &colPtr) != TCL_OK) {
+        return TCL_ERROR;
+    }
+    if (colPtr == NULL) {
+        return TCL_OK;
+    }
+    return Blt_ConfigureValueFromObj(interp, viewPtr->tkwin, columnTitleSpecs, 
+        (char *)colPtr, objv[5], 0);
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ColumnTitleConfigureOp --
+ *
+ *      This procedure is called to process a list of configuration options
+ *      database, in order to reconfigure the one of more entries in the
+ *      widget.
+ *
+ * Results:
+ *      A standard TCL result.  If TCL_ERROR is returned, then interp->result
+ *      contains an error message.
+ *
+ * Side effects:
+ *      Configuration information, such as text string, colors, font, etc. get
+ *      set for viewPtr; old resources get freed, if there were any.  The
+ *      hypertext is redisplayed.
+ *
+ *      pathName column title configure colName option value
+ *
+ *---------------------------------------------------------------------------
+ */
+static int
+ColumnTitleConfigureOp(ClientData clientData, Tcl_Interp *interp, int objc, 
+		       Tcl_Obj *const *objv)
+{
+    TreeView *viewPtr = clientData;
+    Column *colPtr;
+    ColumnIterator iter;
+
+    cachedObjOption.clientData = viewPtr;
+    iconOption.clientData = viewPtr;
+    styleOption.clientData = viewPtr;
+    if (objc == 5) {
+        if (GetColumnFromObj(interp, viewPtr, objv[4], &colPtr) != TCL_OK) {
+            return TCL_ERROR;
+        }
+	if (colPtr == NULL) {
+	    return TCL_OK;
+	}
+        return Blt_ConfigureInfoFromObj(interp, viewPtr->tkwin, 
+		columnTitleSpecs, (char *)colPtr, (Tcl_Obj *)NULL, 0);
+    } else if (objc == 6) {
+        if (GetColumnFromObj(interp, viewPtr, objv[4], &colPtr) != TCL_OK) {
+            return TCL_ERROR;
+        }
+	if (colPtr == NULL) {
+	    return TCL_OK;
+	}
+        return Blt_ConfigureInfoFromObj(interp, viewPtr->tkwin, 
+		columnTitleSpecs, (char *)colPtr, objv[5], 0);
+    }
+    if (GetColumnIterator(interp, viewPtr, objv[4], &iter) != TCL_OK) {
+	return TCL_ERROR;
+    }
+    for (colPtr = FirstTaggedColumn(&iter); colPtr != NULL; 
+         colPtr = NextTaggedColumn(&iter)) {
+
+	if (Blt_ConfigureWidgetFromObj(interp, viewPtr->tkwin, columnTitleSpecs,
+	       objc - 5, objv + 5, (char *)colPtr, BLT_CONFIG_OBJV_ONLY) 
+	    != TCL_OK) {
+	    return TCL_ERROR;
+	}
+	ConfigureColumn(viewPtr, colPtr);
+    }
+    if (Blt_ConfigModified(columnTitleSpecs, "-*borderwidth",
+			   "-text", "-font", (char *)NULL)) {
+        viewPtr->flags |= LAYOUT_PENDING;
+    }
+    EventuallyRedraw(viewPtr);
+    return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ColumnTitleDeactivateOp --
+ *
+ *      Deactivates all columns.  All column titles will be redraw in their
+ *      normal foreground/background colors.
+ *
+ *	pathName column title deactivate
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static int
+ColumnTitleDeactivateOp(ClientData clientData, Tcl_Interp *interp, int objc, 
+			Tcl_Obj *const *objv)
+{
+    TreeView *viewPtr = clientData;
+    Column *activePtr;
+
+    activePtr = viewPtr->colActiveTitlePtr;
+    viewPtr->colActiveTitlePtr = viewPtr->colActivePtr = NULL;
+    /* If we aren't already queued to redraw the widget, try to directly draw
+     * into window. */
+    if ((viewPtr->flags & REDRAW_PENDING) == 0) {
+        if (activePtr != NULL) {
+            Drawable drawable;
+
+            drawable = Tk_WindowId(viewPtr->tkwin);
+            DisplayColumnTitle(viewPtr, activePtr, drawable);
+        }
+    }
+    return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ColumnTitleInvokeOp --
+ *
+ *      This procedure is called to invoke a column title command.
+ *
+ * Results:
+ *      A standard TCL result.  If TCL_ERROR is returned, then
+ *      interp->result contains an error message.
+ *
+ *	pathName column title invoke colName
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static int
+ColumnTitleInvokeOp(ClientData clientData, Tcl_Interp *interp, int objc, 
+		    Tcl_Obj *const *objv)
+{
+    TreeView *viewPtr = clientData;
+    Column *colPtr;
+    char *string;
+    Tcl_Obj *cmdObjPtr;
+
+    string = Tcl_GetString(objv[4]);
+    if (string[0] == '\0') {
+        return TCL_OK;
+    }
+    if (GetColumnFromObj(interp, viewPtr, objv[4], &colPtr) != TCL_OK){
+        return TCL_ERROR;
+    }
+    if (colPtr == NULL) {
+        return TCL_OK;
+    }
+    cmdObjPtr = colPtr->titleCmdObjPtr;
+    if (cmdObjPtr == NULL) {
+        cmdObjPtr = viewPtr->colCmdObjPtr;
+    }
+    if ((colPtr->state == STATE_NORMAL) && (cmdObjPtr != NULL)) {
+        int result;
+        Tcl_Obj *objPtr;
+
+        cmdObjPtr = Tcl_DuplicateObj(cmdObjPtr);
+        objPtr = Tcl_NewStringObj(Tk_PathName(viewPtr->tkwin), -1);
+        Tcl_ListObjAppendElement(viewPtr->interp, cmdObjPtr, objPtr);
+        objPtr = Tcl_NewStringObj(colPtr->key, -1);
+        Tcl_ListObjAppendElement(viewPtr->interp, cmdObjPtr, objPtr);
+        Tcl_Preserve(viewPtr);
+        Tcl_Preserve(colPtr);
+        Tcl_IncrRefCount(cmdObjPtr);
+        result = Tcl_EvalObjEx(viewPtr->interp, cmdObjPtr, TCL_EVAL_GLOBAL);
+        Tcl_DecrRefCount(cmdObjPtr);
+        Tcl_Release(colPtr);
+        Tcl_Release(viewPtr);
+        return result;
+    }
+    return TCL_OK;
+}
+
+static Blt_OpSpec columnTitleOps[] =
+{ 
+    {"activate",   2, ColumnTitleActivateOp,   5, 5, "colName",},
+    {"bind",       1, ColumnTitleBindOp,       5, 7, "tagName ?sequence command?",},
+    {"cget",       2, ColumnTitleCgetOp,       5, 6, "colName option",},
+    {"configure",  2, ColumnTitleConfigureOp,  5, 0, "colName ?option value?...",},
+    {"deactivate", 1, ColumnTitleDeactivateOp, 4, 4, "",},
+    {"invoke",     1, ColumnTitleInvokeOp,     5, 5, "colName",},
+};
+
+static int numColumnTitleOps = sizeof(columnTitleOps) / sizeof(Blt_OpSpec);
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ColumnTitleOp --
+ *
+ *---------------------------------------------------------------------------
+ */
+static int
+ColumnTitleOp(ClientData clientData, Tcl_Interp *interp, int objc, 
+               Tcl_Obj *const *objv)
+{
+    Tcl_ObjCmdProc *proc;
+    int result;
+
+    proc = Blt_GetOpFromObj(interp, numColumnTitleOps, columnTitleOps, 
+        BLT_OP_ARG3, objc, objv,0);
+    if (proc == NULL) {
+        return TCL_ERROR;
+    }
+    result = (*proc) (clientData, interp, objc, objv);
+    return result;
+}
+
 static Blt_OpSpec columnOps[] =
 {
-    {"activate",   1, ColumnActivateOp,   4, 4, "field",},
     {"bind",       1, ColumnBindOp,       5, 7, "tagName type ?sequence command?",},
     {"cget",       2, ColumnCgetOp,       5, 5, "field option",},
     {"configure",  2, ColumnConfigureOp,  4, 0, "field ?option value?...",},
     {"current",    2, ColumnCurrentOp,    3, 3, "",},
-    {"deactivate", 3, ColumnDeactivateOp, 3, 3, "",},
     {"delete",     3, ColumnDeleteOp,     3, 0, "?field...?",},
     {"exists",     1, ColumnExistsOp,     4, 4, "field",},
     {"index",      3, ColumnIndexOp,      4, 4, "field",},
     {"insert",     3, ColumnInsertOp,     5, 0, 
         "position field ?field...? ?option value?...",},
-    {"invoke",     3, ColumnInvokeOp,     4, 4, "field",},
     {"names",      2, ColumnNamesOp,      3, 3, "",},
     {"nearest",    2, ColumnNearestOp,    4, 5, "x ?y?",},
     {"resize",     1, ColumnResizeOp,     3, 0, "arg",},
+    {"tag",        1, ColumnTagOp,        3, 0, "arg",},
+    {"title",      1, ColumnTitleOp,      3, 0, "arg",},
 };
 static int numColumnOps = sizeof(columnOps) / sizeof(Blt_OpSpec);
 
@@ -11671,6 +12653,266 @@ EntrySizeOp(ClientData clientData, Tcl_Interp *interp, int objc,
 /*
  *---------------------------------------------------------------------------
  *
+ * EntryTagAddOp --
+ *
+ *      pathName entry tag add tagName nodeName
+ *---------------------------------------------------------------------------
+ */
+static int
+EntryTagAddOp(ClientData clientData, Tcl_Interp *interp, int objc, 
+         Tcl_Obj *const *objv)
+{
+    Entry *entryPtr;
+    EntryIterator iter;
+    TreeView *viewPtr = clientData;
+    char c;
+    const char *string;
+    int i;
+
+    string = Tcl_GetString(objv[4]);
+    c = string[0];
+    viewPtr->fromPtr = NULL;
+    if ((c == 'r') && (strcmp(string, "root") == 0)) {
+        Tcl_AppendResult(interp, "can't add reserved tag \"", string, "\"", 
+                (char *)NULL);
+        return TCL_ERROR;
+    }
+    if ((isdigit(c)) && (Blt_ObjIsInteger(objv[4]))) {
+	Tcl_AppendResult(viewPtr->interp, "invalid tag \"", string, 
+			 "\": can't be a number.", (char *)NULL);
+	return TCL_ERROR;
+    }
+    if (c == '@') {
+        Tcl_AppendResult(viewPtr->interp, "invalid tag \"", string, 
+                "\": can't start with \"@\"", (char *)NULL);
+        return TCL_ERROR;
+    } 
+    if (GetEntryFromSpecialId(viewPtr, objv[4], &entryPtr) == TCL_OK) {
+        Tcl_AppendResult(interp, "invalid tag \"", string, 
+                 "\": is a special id", (char *)NULL);
+        return TCL_ERROR;
+    }
+    for (i = 5; i < objc; i++) {
+        if (GetEntryIterator(interp, viewPtr, objv[i], &iter) != TCL_OK) {
+            return TCL_ERROR;
+        }
+        for (entryPtr = FirstTaggedEntry(&iter); entryPtr != NULL; 
+             entryPtr = NextTaggedEntry(&iter)) {
+            if (AddTag(interp, viewPtr, entryPtr->node, objv[4]) != TCL_OK) {
+                return TCL_ERROR;
+            }
+        }
+    }
+    return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * EntryTagDeleteOp --
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static int
+EntryTagDeleteOp(ClientData clientData, Tcl_Interp *interp, int objc, 
+		 Tcl_Obj *const *objv)
+{
+    TreeView *viewPtr = clientData;
+    char *string;
+    Blt_HashTable *tablePtr;
+
+    string = Tcl_GetString(objv[4]);
+    tablePtr = Blt_Tree_TagHashTable(viewPtr->tree, string);
+    if (tablePtr != NULL) {
+        int i;
+
+        for (i = 5; i < objc; i++) {
+            Entry *entryPtr;
+            EntryIterator iter;
+
+            if (GetEntryIterator(interp, viewPtr, objv[i], &iter)!= TCL_OK) {
+                return TCL_ERROR;
+            }
+            for (entryPtr = FirstTaggedEntry(&iter); 
+                entryPtr != NULL; 
+                entryPtr = NextTaggedEntry(&iter)) {
+                Blt_HashEntry *hPtr;
+
+                hPtr = Blt_FindHashEntry(tablePtr, (char *)entryPtr->node);
+                if (hPtr != NULL) {
+                    Blt_DeleteHashEntry(tablePtr, hPtr);
+                }
+           }
+       }
+    }
+    return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * EntryTagForgetOp --
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static int
+EntryTagForgetOp(ClientData clientData, Tcl_Interp *interp, int objc, 
+		 Tcl_Obj *const *objv)
+{
+    TreeView *viewPtr = clientData;
+    int i;
+
+    for (i = 4; i < objc; i++) {
+        Blt_Tree_ForgetTag(viewPtr->tree, Tcl_GetString(objv[i]));
+    }
+    return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * EntryTagNamesOp --
+ *
+ *---------------------------------------------------------------------------
+ */
+static int
+EntryTagNamesOp(ClientData clientData, Tcl_Interp *interp, int objc, 
+		Tcl_Obj *const *objv)
+{
+    TreeView *viewPtr = clientData;
+    Tcl_Obj *listObjPtr, *objPtr;
+
+    listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **) NULL);
+    objPtr = Tcl_NewStringObj("all", -1);
+    Tcl_ListObjAppendElement(interp, listObjPtr, objPtr);
+    if (objc == 4) {
+        Blt_HashEntry *hPtr;
+        Blt_HashSearch cursor;
+
+        objPtr = Tcl_NewStringObj("root", -1);
+        Tcl_ListObjAppendElement(interp, listObjPtr, objPtr);
+        for (hPtr = Blt_Tree_FirstTag(viewPtr->tree, &cursor); hPtr != NULL;
+             hPtr = Blt_NextHashEntry(&cursor)) {
+            Blt_TreeTagEntry *tPtr;
+
+            tPtr = Blt_GetHashValue(hPtr);
+            objPtr = Tcl_NewStringObj(tPtr->tagName, -1);
+            Tcl_ListObjAppendElement(interp, listObjPtr, objPtr);
+        }
+    } else {
+        int i;
+
+        for (i = 4; i < objc; i++) {
+            Blt_Chain tags;
+            Blt_ChainLink link;
+            Entry *entryPtr;
+
+            if (GetEntry(interp, viewPtr, objv[i], &entryPtr) != TCL_OK) {
+                return TCL_ERROR;
+            }
+            tags = Blt_Chain_Create();
+            AddEntryTags(viewPtr, entryPtr, tags);
+            for (link = Blt_Chain_FirstLink(tags); link != NULL; 
+                 link = Blt_Chain_NextLink(link)) {
+                objPtr = Tcl_NewStringObj(Blt_Chain_GetValue(link), -1);
+                Tcl_ListObjAppendElement(interp, listObjPtr, objPtr);
+            }
+            Blt_Chain_Destroy(tags);
+        }
+    }
+    Tcl_SetObjResult(interp, listObjPtr);
+    return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * EntryTagNodesOp --
+ *
+ *---------------------------------------------------------------------------
+ */
+static int
+EntryTagNodesOp(ClientData clientData, Tcl_Interp *interp, int objc, 
+		Tcl_Obj *const *objv)
+{
+    TreeView *viewPtr = clientData;
+    Blt_HashTable nodeTable;
+    int i;
+
+    Blt_InitHashTable(&nodeTable, BLT_ONE_WORD_KEYS);
+    for (i = 4; i < objc; i++) {
+        EntryIterator iter;
+        Entry *entryPtr;
+
+        if (GetEntryIterator(interp, viewPtr, objv[i], &iter) != TCL_OK) {
+            return TCL_ERROR;
+        }
+        for (entryPtr = FirstTaggedEntry(&iter); entryPtr != NULL; 
+             entryPtr = NextTaggedEntry(&iter)) {
+            int isNew;
+
+            Blt_CreateHashEntry(&nodeTable, (char *)entryPtr->node, &isNew);
+        }
+    }
+    {
+        Blt_HashEntry *hPtr;
+        Blt_HashSearch cursor;
+        Tcl_Obj *listObjPtr;
+
+        listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **) NULL);
+        for (hPtr = Blt_FirstHashEntry(&nodeTable, &cursor); hPtr != NULL; 
+             hPtr = Blt_NextHashEntry(&cursor)) {
+            Blt_TreeNode node;
+            Tcl_Obj *objPtr;
+            
+            node = (Blt_TreeNode)Blt_GetHashKey(&nodeTable, hPtr);
+            objPtr = Tcl_NewLongObj(Blt_Tree_NodeId(node));
+            Tcl_ListObjAppendElement(interp, listObjPtr, objPtr);
+        }
+        Tcl_SetObjResult(interp, listObjPtr);
+    }
+    Blt_DeleteHashTable(&nodeTable);
+    return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * EntryTagOp --
+ *
+ *---------------------------------------------------------------------------
+ */
+static Blt_OpSpec entryTagOps[] = {
+    {"add",    1, EntryTagAddOp,    6, 0, "tagName nodeName...",},
+    {"delete", 1, EntryTagDeleteOp, 6, 0, "tagName nodeName...",},
+    {"forget", 1, EntryTagForgetOp, 5, 0, "tagName...",},
+    {"names",  2, EntryTagNamesOp,  4, 0, "?nodeName...?",}, 
+    {"nodes",  2, EntryTagNodesOp,  5, 0, "tagName ?tagName...?",},
+};
+
+static int numEntryTagOps = sizeof(entryTagOps) / sizeof(Blt_OpSpec);
+
+static int
+EntryTagOp(ClientData clientData, Tcl_Interp *interp, int objc, 
+	   Tcl_Obj *const *objv)
+{
+    int result;
+    Tcl_ObjCmdProc *proc;
+
+    proc = Blt_GetOpFromObj(interp, numEntryTagOps, entryTagOps, BLT_OP_ARG3, 
+			    objc, objv, 0);
+    if (proc == NULL) {
+        return TCL_ERROR;
+    }
+    result = (*proc)(clientData, interp, objc, objv);
+    return result;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
  * EntryOp --
  *
  *      This procedure handles entry operations.
@@ -11707,6 +12949,7 @@ static Blt_OpSpec entryOps[] =
     /*see*/
     /*show*/
     {"size",      1, EntrySizeOp,      4, 0, "entryName ?switches...?",},
+    {"tag",       1, EntryTagOp,       3, 0, "oper args",},
     /*toggle*/
 };
 static int numEntryOps = sizeof(entryOps) / sizeof(Blt_OpSpec);
@@ -13041,7 +14284,7 @@ RangeOp(ClientData clientData, Tcl_Interp *interp, int objc,
     }
 
     /*
-     * The relative order of the first/last markers determines the
+     * The relative order of the first/last nodes determines the
      * direction.
      */
     listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **)NULL);
@@ -13724,8 +14967,6 @@ SortCgetOp(ClientData clientData, Tcl_Interp *interp, int objc,
  *      database, in order to reconfigure the one of more entries in the
  *      widget.
  *
- *        .h sort configure option value
- *
  * Results:
  *      A standard TCL result.  If TCL_ERROR is returned, then
  *      interp->result contains an error message.
@@ -13962,7 +15203,7 @@ StyleActivateOp(ClientData clientData, Tcl_Interp *interp, int objc,
     if (GetEntry(interp, viewPtr, objv[3], &entryPtr) != TCL_OK) {
         return TCL_ERROR;
     }
-    if (GetColumn(interp, viewPtr, objv[4], &colPtr) != TCL_OK) {
+    if (GetColumnFromObj(interp, viewPtr, objv[4], &colPtr) != TCL_OK) {
         return TCL_ERROR;
     }
     if ((colPtr == NULL) || (entryPtr == NULL)) {
@@ -14676,266 +15917,6 @@ StyleOp(ClientData clientData, Tcl_Interp *interp, int objc,
     return result;
 }
 
-
-/*
- *---------------------------------------------------------------------------
- *
- * TagAddOp --
- *
- *      pathName tag add tag nodeName
- *---------------------------------------------------------------------------
- */
-static int
-TagAddOp(ClientData clientData, Tcl_Interp *interp, int objc, 
-         Tcl_Obj *const *objv)
-{
-    Entry *entryPtr;
-    EntryIterator iter;
-    TreeView *viewPtr = clientData;
-    char c;
-    const char *string;
-    int i;
-
-    string = Tcl_GetString(objv[3]);
-    c = string[0];
-    viewPtr->fromPtr = NULL;
-    if ((c == 'r') && (strcmp(string, "root") == 0)) {
-        Tcl_AppendResult(interp, "can't add reserved tag \"", string, "\"", 
-                (char *)NULL);
-        return TCL_ERROR;
-    }
-    if ((isdigit(c)) && (Blt_ObjIsInteger(objv[3]))) {
-	Tcl_AppendResult(viewPtr->interp, "invalid tag \"", string, 
-			 "\": can't be a number.", (char *)NULL);
-	return TCL_ERROR;
-    }
-    if (c == '@') {
-        Tcl_AppendResult(viewPtr->interp, "invalid tag \"", string, 
-                "\": can't start with \"@\"", (char *)NULL);
-        return TCL_ERROR;
-    } 
-    if (GetEntryFromSpecialId(viewPtr, objv[3], &entryPtr) == TCL_OK) {
-        Tcl_AppendResult(interp, "invalid tag \"", string, 
-                 "\": is a special id", (char *)NULL);
-        return TCL_ERROR;
-    }
-    for (i = 4; i < objc; i++) {
-        if (GetEntryIterator(interp, viewPtr, objv[i], &iter) != TCL_OK) {
-            return TCL_ERROR;
-        }
-        for (entryPtr = FirstTaggedEntry(&iter); entryPtr != NULL; 
-             entryPtr = NextTaggedEntry(&iter)) {
-            if (AddTag(interp, viewPtr, entryPtr->node, objv[3]) != TCL_OK) {
-                return TCL_ERROR;
-            }
-        }
-    }
-    return TCL_OK;
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * TagDeleteOp --
- *
- *---------------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static int
-TagDeleteOp(ClientData clientData, Tcl_Interp *interp, int objc, 
-            Tcl_Obj *const *objv)
-{
-    TreeView *viewPtr = clientData;
-    char *string;
-    Blt_HashTable *tablePtr;
-
-    string = Tcl_GetString(objv[3]);
-    tablePtr = Blt_Tree_TagHashTable(viewPtr->tree, string);
-    if (tablePtr != NULL) {
-        int i;
-
-        for (i = 4; i < objc; i++) {
-            Entry *entryPtr;
-            EntryIterator iter;
-
-            if (GetEntryIterator(interp, viewPtr, objv[i], &iter)!= TCL_OK) {
-                return TCL_ERROR;
-            }
-            for (entryPtr = FirstTaggedEntry(&iter); 
-                entryPtr != NULL; 
-                entryPtr = NextTaggedEntry(&iter)) {
-                Blt_HashEntry *hPtr;
-
-                hPtr = Blt_FindHashEntry(tablePtr, (char *)entryPtr->node);
-                if (hPtr != NULL) {
-                    Blt_DeleteHashEntry(tablePtr, hPtr);
-                }
-           }
-       }
-    }
-    return TCL_OK;
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * TagForgetOp --
- *
- *---------------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static int
-TagForgetOp(ClientData clientData, Tcl_Interp *interp, int objc, 
-            Tcl_Obj *const *objv)
-{
-    TreeView *viewPtr = clientData;
-    int i;
-
-    for (i = 3; i < objc; i++) {
-        Blt_Tree_ForgetTag(viewPtr->tree, Tcl_GetString(objv[i]));
-    }
-    return TCL_OK;
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * TagNamesOp --
- *
- *---------------------------------------------------------------------------
- */
-static int
-TagNamesOp(ClientData clientData, Tcl_Interp *interp, int objc, 
-           Tcl_Obj *const *objv)
-{
-    TreeView *viewPtr = clientData;
-    Tcl_Obj *listObjPtr, *objPtr;
-
-    listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **) NULL);
-    objPtr = Tcl_NewStringObj("all", -1);
-    Tcl_ListObjAppendElement(interp, listObjPtr, objPtr);
-    if (objc == 3) {
-        Blt_HashEntry *hPtr;
-        Blt_HashSearch cursor;
-
-        objPtr = Tcl_NewStringObj("root", -1);
-        Tcl_ListObjAppendElement(interp, listObjPtr, objPtr);
-        for (hPtr = Blt_Tree_FirstTag(viewPtr->tree, &cursor); hPtr != NULL;
-             hPtr = Blt_NextHashEntry(&cursor)) {
-            Blt_TreeTagEntry *tPtr;
-
-            tPtr = Blt_GetHashValue(hPtr);
-            objPtr = Tcl_NewStringObj(tPtr->tagName, -1);
-            Tcl_ListObjAppendElement(interp, listObjPtr, objPtr);
-        }
-    } else {
-        int i;
-
-        for (i = 3; i < objc; i++) {
-            Blt_Chain tags;
-            Blt_ChainLink link;
-            Entry *entryPtr;
-
-            if (GetEntry(interp, viewPtr, objv[i], &entryPtr) != TCL_OK) {
-                return TCL_ERROR;
-            }
-            tags = Blt_Chain_Create();
-            AddEntryTags(viewPtr, entryPtr, tags);
-            for (link = Blt_Chain_FirstLink(tags); link != NULL; 
-                 link = Blt_Chain_NextLink(link)) {
-                objPtr = Tcl_NewStringObj(Blt_Chain_GetValue(link), -1);
-                Tcl_ListObjAppendElement(interp, listObjPtr, objPtr);
-            }
-            Blt_Chain_Destroy(tags);
-        }
-    }
-    Tcl_SetObjResult(interp, listObjPtr);
-    return TCL_OK;
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * TagNodesOp --
- *
- *---------------------------------------------------------------------------
- */
-static int
-TagNodesOp(ClientData clientData, Tcl_Interp *interp, int objc, 
-           Tcl_Obj *const *objv)
-{
-    TreeView *viewPtr = clientData;
-    Blt_HashTable nodeTable;
-    int i;
-
-    Blt_InitHashTable(&nodeTable, BLT_ONE_WORD_KEYS);
-    for (i = 3; i < objc; i++) {
-        EntryIterator iter;
-        Entry *entryPtr;
-
-        if (GetEntryIterator(interp, viewPtr, objv[i], &iter) != TCL_OK) {
-            return TCL_ERROR;
-        }
-        for (entryPtr = FirstTaggedEntry(&iter); entryPtr != NULL; 
-             entryPtr = NextTaggedEntry(&iter)) {
-            int isNew;
-
-            Blt_CreateHashEntry(&nodeTable, (char *)entryPtr->node, &isNew);
-        }
-    }
-    {
-        Blt_HashEntry *hPtr;
-        Blt_HashSearch cursor;
-        Tcl_Obj *listObjPtr;
-
-        listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **) NULL);
-        for (hPtr = Blt_FirstHashEntry(&nodeTable, &cursor); hPtr != NULL; 
-             hPtr = Blt_NextHashEntry(&cursor)) {
-            Blt_TreeNode node;
-            Tcl_Obj *objPtr;
-            
-            node = (Blt_TreeNode)Blt_GetHashKey(&nodeTable, hPtr);
-            objPtr = Tcl_NewLongObj(Blt_Tree_NodeId(node));
-            Tcl_ListObjAppendElement(interp, listObjPtr, objPtr);
-        }
-        Tcl_SetObjResult(interp, listObjPtr);
-    }
-    Blt_DeleteHashTable(&nodeTable);
-    return TCL_OK;
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * TagOp --
- *
- *---------------------------------------------------------------------------
- */
-static Blt_OpSpec tagOps[] = {
-    {"add",    1, TagAddOp,    5, 0, "tagName nodeName...",},
-    {"delete", 1, TagDeleteOp, 5, 0, "tagName nodeName...",},
-    {"forget", 1, TagForgetOp, 4, 0, "tagName...",},
-    {"names",  2, TagNamesOp,  3, 0, "?nodeName...?",}, 
-    {"nodes",  2, TagNodesOp,  4, 0, "tagName ?tagName...?",},
-};
-
-static int numTagOps = sizeof(tagOps) / sizeof(Blt_OpSpec);
-
-static int
-TagOp(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
-{
-    int result;
-    Tcl_ObjCmdProc *proc;
-
-    proc = Blt_GetOpFromObj(interp, numTagOps, tagOps, BLT_OP_ARG2, objc, objv, 
-        0);
-    if (proc == NULL) {
-        return TCL_ERROR;
-    }
-    result = (*proc)(clientData, interp, objc, objv);
-    return result;
-}
-
 /*ARGSUSED*/
 static int
 ToggleOp(ClientData clientData, Tcl_Interp *interp, int objc, 
@@ -15188,7 +16169,6 @@ static Blt_OpSpec viewOps[] =
     {"show",         2, ShowOp,          2, 0, "?-exact? ?-glob? ?-regexp? ?-nonmatching? ?-name string? ?-full string? ?-data string? ?--? ?entryName...?",},
     {"sort",         2, SortOp,          2, 0, "args",},
     {"style",        2, StyleOp,         2, 0, "args",},
-    {"tag",          2, TagOp,           2, 0, "oper args",},
     {"toggle",       2, ToggleOp,        3, 3, "entryName",},
     {"type",         2, TypeOp,          3, 3, "cell",},
     {"updates",      3, UpdatesOp,       2, 3, "?bool?",},

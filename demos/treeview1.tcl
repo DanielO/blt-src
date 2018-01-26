@@ -92,7 +92,7 @@ blt::treeview $view \
     -separator / \
     -tree $tree  -font "Arial 9"
 
-$view column configure treeView -text "name" -edit yes \
+$view column configure treeView -title "name" -edit yes \
     -sorttype dictionary 
 $view column insert 0 mtime -sorttype integer -formatcommand FormatDate 
 $view column insert 0 atime -sorttype integer -formatcommand FormatDate
@@ -107,10 +107,9 @@ $view column insert end size -sorttype integer -formatcommand FormatSize \
 $view sort configure -columns treeView 
 focus $view
 
-foreach c [$view column names] {
-    $view column configure $c \
-	-titleborderwidth 1 -borderwidth 1 -relief sunken -titlefont "Arial 10"
-}
+$view column configure all \
+    -titleborderwidth 1 -borderwidth 1 -relief sunken -titlefont "Arial 10"
+
 blt::table . \
     0,0 .ss  -fill both 
 

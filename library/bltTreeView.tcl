@@ -282,7 +282,7 @@ proc blt::TreeView::Initialize { w } {
 
     # ButtonPress-1
     #   Save the index of the current entry (whose button was pressed).
-    $w entry bind all button <ButtonPress-1> {
+    $w button bind all <ButtonPress-1> {
         blt::TreeView::trace "ButtonPress-1 for Button"
         set blt::TreeView::_private(lastButton) [%W index current]
     }
@@ -290,7 +290,7 @@ proc blt::TreeView::Initialize { w } {
     # ButtonRelease-1
     #   If over the same button where the button was pressed, open or close
     #   the entry.
-    $w entry bind all button <ButtonRelease-1> {
+    $w button bind all <ButtonRelease-1> {
         blt::TreeView::trace "ButtonRelease-1 for Button"
 	if { [%W button contains %x %y] ==
              $blt::TreeView::_private(lastButton) } {
@@ -299,12 +299,12 @@ proc blt::TreeView::Initialize { w } {
             blt::TreeView::trace "not over button"
         }            
     }
-    $w entry bind all button <Enter> {
+    $w button bind all <Enter> {
         blt::TreeView::trace "Enter Button"
 	%W button activate current
         set blt::TreeView::_private(lastButton) [%W index current]
     }
-    $w entry bind all button <Leave> {
+    $w button bind all <Leave> {
         blt::TreeView::trace "Leave Button"
         set blt::TreeView::_private(lastButton) -1
 	%W button activate ""
@@ -490,37 +490,35 @@ proc blt::TreeView::Initialize { w } {
 	# Do nothing.
     }
 
-    $w column bind all title <Enter> {
-	%W column activate current
+    $w column title bind all <Enter> {
+	%W column title activate current
     }
-    $w column bind all title <Leave> {
-	%W column deactivate
+    $w column title bind all <Leave> {
+	%W column title deactivate
     }
-    $w column bind all resize <Enter> {
-	%W column activate current
+    $w column resize bind all <Enter> {
 	%W column resize activate current
     }
-    $w column bind all resize <Leave> {
-	%W column deactivate
+    $w column resize bind all <Leave> {
 	%W column resize deactivate 
     }
-    $w column bind all resize <ButtonPress-1> {
+    $w column resize bind all <ButtonPress-1> {
 	%W column resize anchor %x
     }
-    $w column bind all resize <B1-Motion> {
+    $w column resize bind all <B1-Motion> {
 	%W column resize mark %x
     }
-    $w column bind all resize <ButtonRelease-1> {
+    $w column resize bind all <ButtonRelease-1> {
 	%W column configure active -width [%W column resize set]
     }
-    $w column bind all title <ButtonPress-1> {
+    $w column title bind all <ButtonPress-1> {
 	set blt::TreeView::_private(column) active
-	%W column configure $blt::TreeView::_private(column) \
-	    -titlerelief sunken
+	%W column title configure $blt::TreeView::_private(column) \
+	    -relief sunken
     }
-    $w column bind all title <ButtonRelease-1> {
-	%W column invoke active
-	%W column configure active -titlerelief raised
+    $w column title bind all <ButtonRelease-1> {
+	%W column title invoke active
+	%W column title configure active -relief raised
     }
 
     # TextBoxStyle

@@ -1541,22 +1541,22 @@ command.  The following operation are available for *treeview* widgets:
   **-recurse**
     Recursively sort the entire branch, not just the children.
 
-*pathName* **tag add** *string* *id*...
+*pathName* **entry tag add** *string* *id*...
   Adds the tag *string* to one of more entries.
 
-*pathName* **tag delete** *string* *id*...
+*pathName* **entry tag delete** *string* *id*...
   Deletes the tag *string* from one or more entries.  
 
-*pathName* **tag forget** *string*
+*pathName* **entry tag forget** *string*
   Removes the tag *string* from all entries.  It's not an error if no
   entries are tagged as *string*.
 
-*pathName* **tag names** ?\ *id*\ ?
+*pathName* **entry tag names** ?\ *id*\ ?
   Returns a list of tags used.  If an *id* argument
   is present, only those tags used by the node designated by *id* 
   are returned.
 
-*pathName* **tag nodes** *string*
+*pathName* **entry tag nodes** *string*
   Returns a list of ids that have the tag *string*.  If no node
   is tagged as *string*, then an empty string is returned.
 

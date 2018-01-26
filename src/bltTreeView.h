@@ -56,6 +56,7 @@
 #include "bltTree.h"
 #include "bltBind.h"
 #include "bltBg.h"
+#include "bltTags.h"
 
 typedef enum {
     ITEM_NONE,
@@ -313,7 +314,7 @@ struct _Column {
                                          * entry. */
 
     /* Title-related information */
-    const char *text;                   /* Text displayed in column heading
+    const char *titleText;              /* Text displayed in column heading
                                          * as its title. By default, this
                                          * is the same as the data cell
                                          * name. */
@@ -337,8 +338,9 @@ struct _Column {
     short int titleWidth, titleHeight;
 
     Icon titleIcon;                     /* Icon displayed in column heading */
-    Tcl_Obj *cmdObjPtr;                 /* TCL script to be executed by the
-                                         * column's "invoke" operation. */
+    Tcl_Obj *titleCmdObjPtr;            /* TCL script to be executed by the
+                                         * column title's "invoke"
+                                         * operation. */
     Tcl_Obj *sortCmdObjPtr;             /* TCL script used to compare two
                                          * columns. This overrides the
                                          * global command for this
@@ -955,6 +957,7 @@ struct _TreeView {
 
     Blt_Pool entryPool;
     Blt_Pool cellPool;
+    struct _Blt_Tags colTags;          /* Table of tags. */
 };
 
 BLT_EXTERN Cell *Blt_TreeView_FindCell(Entry *entryPtr, Column *colPtr);
