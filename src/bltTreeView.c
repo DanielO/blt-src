@@ -2046,7 +2046,7 @@ FirstTaggedColumn(ColumnIterator *iterPtr)
  * GetColumnIterator --
  *
  *      Converts a string representing a column index into a column
- *      pointer.  The colName may be in one of the following forms:
+ *      pointer.  The columnName may be in one of the following forms:
  *
  *       "all"          All columns.
  *       name           Name of the column.
@@ -10477,6 +10477,8 @@ CloseOp(ClientData clientData, Tcl_Interp *interp, int objc,
  *
  *        pathName column bind tag type sequence command
  *
+ *	title	handled by column title bind
+ *	
  *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
@@ -10567,7 +10569,7 @@ ColumnCgetOp(ClientData clientData, Tcl_Interp *interp, int objc,
  *      etc. get set for viewPtr; old resources get freed, if there
  *      were any.  The hypertext is redisplayed.
  *
- *      pathName column configure colName ?option value?
+ *      pathName column configure columnName ?option value?
  *---------------------------------------------------------------------------
  */
 static int
@@ -10750,7 +10752,7 @@ ColumnIndexOp(ClientData clientData, Tcl_Interp *interp, int objc,
  *
  *      Add new columns to the tree.
  *
- *      pathName column insert insertPos fieldName ?option values ...?
+ *      pathName column insert insertPos columnName ?option values ...?
  *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
@@ -10835,7 +10837,7 @@ ColumnCurrentOp(ClientData clientData, Tcl_Interp *interp, int objc,
  *
  *      Move a column.
  *
- * pathName column move field1 position
+ * pathName column move columnName position
  *---------------------------------------------------------------------------
  */
 
@@ -11194,7 +11196,7 @@ ColumnResizeOp(ClientData clientData, Tcl_Interp *interp, int objc,
  *
  * ColumnTagAddOp --
  *
- *      pathName column tag add tagName colName
+ *      pathName column tag add tagName columnName
  *---------------------------------------------------------------------------
  */
 static int
@@ -11291,7 +11293,7 @@ ColumnTagDeleteOp(ClientData clientData, Tcl_Interp *interp, int objc,
  *      Returns the existence of the one or more tags in the given node.
  *      If the node has any the tags, true is return in the interpreter.
  *
- *      pathName column tag exists colName ?tagName ...?
+ *      pathName column tag exists columnName ?tagName ...?
  *
  *---------------------------------------------------------------------------
  */
@@ -11363,7 +11365,7 @@ ColumnTagForgetOp(ClientData clientData, Tcl_Interp *interp, int objc,
  *      Returns tag names for a given column.  If one of more pattern
  *      arguments are provided, then only those matching tags are returned.
  *
- *      pathName column tag get colName ?pattern ...?
+ *      pathName column tag get columnName ?pattern ...?
  *
  *---------------------------------------------------------------------------
  */
@@ -11436,7 +11438,7 @@ ColumnTagGetOp(ClientData clientData, Tcl_Interp *interp, int objc,
  *
  * ColumnTagNamesOp --
  *
- *	pathName column tag names ?colName ...?
+ *	pathName column tag names ?columnName ...?
  *
  *---------------------------------------------------------------------------
  */
@@ -11510,7 +11512,7 @@ ColumnTagNamesOp(ClientData clientData, Tcl_Interp *interp, int objc,
  *      a digit (to distinquish them from node ids) and can't be a reserved
  *      tag ("root" or "all").
  *
- *      pathName column tag set colName ?tag1 tag2 ...?
+ *      pathName column tag set columnName ?tag1 tag2 ...?
  *
  *---------------------------------------------------------------------------
  */
@@ -11559,7 +11561,7 @@ ColumnTagSetOp(ClientData clientData, Tcl_Interp *interp, int objc,
  *      or is a reserved tag ("root" or "all"), nothing will be done and no
  *      error message will be returned.
  *
- *      pathname column tag unset colName tag1 tag2...
+ *      pathname column tag unset columnName tag1 tag2...
  *
  *---------------------------------------------------------------------------
  */
@@ -11596,14 +11598,14 @@ ColumnTagUnsetOp(ClientData clientData, Tcl_Interp *interp, int objc,
  *---------------------------------------------------------------------------
  */
 static Blt_OpSpec columnTagOps[] = {
-    {"add",    1, ColumnTagAddOp,    6, 0, "tagName colName...",},
-    {"delete", 1, ColumnTagDeleteOp, 6, 0, "tagName colName...",},
-    {"exists", 1, ColumnTagExistsOp, 4, 5, "tag ?colName?"},
+    {"add",    1, ColumnTagAddOp,    6, 0, "tagName columnName...",},
+    {"delete", 1, ColumnTagDeleteOp, 6, 0, "tagName columnName...",},
+    {"exists", 1, ColumnTagExistsOp, 4, 5, "tag ?columnName?"},
     {"forget", 1, ColumnTagForgetOp, 5, 0, "tagName...",},
-    {"get",    1, ColumnTagGetOp,    5, 0, "colName ?pattern...?"},
-    {"names",  2, ColumnTagNamesOp,  4, 0, "?colName...?",}, 
-    {"set",    1, ColumnTagSetOp,    5, 0, "colName ?tagName...?"},
-    {"unset",  1, ColumnTagUnsetOp,  5, 0, "colName ?tagName...?"},
+    {"get",    1, ColumnTagGetOp,    5, 0, "columnName ?pattern...?"},
+    {"names",  2, ColumnTagNamesOp,  4, 0, "?columnName...?",}, 
+    {"set",    1, ColumnTagSetOp,    5, 0, "columnName ?tagName...?"},
+    {"unset",  1, ColumnTagUnsetOp,  5, 0, "columnName ?tagName...?"},
 };
 
 static int numColumnTagOps = sizeof(columnTagOps) / sizeof(Blt_OpSpec);
@@ -11631,7 +11633,7 @@ ColumnTagOp(ClientData clientData, Tcl_Interp *interp, int objc,
  *
  *      Selects the column title to appear active.
  *
- *      pathName column title activate colName
+ *      pathName column title activate columnName
  *
  *---------------------------------------------------------------------------
  */
@@ -11713,7 +11715,7 @@ ColumnTitleBindOp(ClientData clientData, Tcl_Interp *interp, int objc,
  *
  * ColumnTitleCgetOp --
  *
- *      pathName column title cget colName option
+ *      pathName column title cget columnName option
  *
  *---------------------------------------------------------------------------
  */
@@ -11757,7 +11759,7 @@ ColumnTitleCgetOp(ClientData clientData, Tcl_Interp *interp, int objc,
  *      set for viewPtr; old resources get freed, if there were any.  The
  *      hypertext is redisplayed.
  *
- *      pathName column title configure colName option value
+ *      pathName column title configure columnName option value
  *
  *---------------------------------------------------------------------------
  */
@@ -11858,7 +11860,7 @@ ColumnTitleDeactivateOp(ClientData clientData, Tcl_Interp *interp, int objc,
  *      A standard TCL result.  If TCL_ERROR is returned, then
  *      interp->result contains an error message.
  *
- *	pathName column title invoke colName
+ *	pathName column title invoke columnName
  *
  *---------------------------------------------------------------------------
  */
@@ -11909,12 +11911,12 @@ ColumnTitleInvokeOp(ClientData clientData, Tcl_Interp *interp, int objc,
 
 static Blt_OpSpec columnTitleOps[] =
 { 
-    {"activate",   2, ColumnTitleActivateOp,   5, 5, "colName",},
+    {"activate",   2, ColumnTitleActivateOp,   5, 5, "columnName",},
     {"bind",       1, ColumnTitleBindOp,       5, 7, "tagName ?sequence command?",},
-    {"cget",       2, ColumnTitleCgetOp,       5, 6, "colName option",},
-    {"configure",  2, ColumnTitleConfigureOp,  5, 0, "colName ?option value?...",},
+    {"cget",       2, ColumnTitleCgetOp,       5, 6, "columnName option",},
+    {"configure",  2, ColumnTitleConfigureOp,  5, 0, "columnName ?option value?...",},
     {"deactivate", 1, ColumnTitleDeactivateOp, 4, 4, "",},
-    {"invoke",     1, ColumnTitleInvokeOp,     5, 5, "colName",},
+    {"invoke",     1, ColumnTitleInvokeOp,     5, 5, "columnName",},
 };
 
 static int numColumnTitleOps = sizeof(columnTitleOps) / sizeof(Blt_OpSpec);
@@ -11945,14 +11947,14 @@ ColumnTitleOp(ClientData clientData, Tcl_Interp *interp, int objc,
 static Blt_OpSpec columnOps[] =
 {
     {"bind",       1, ColumnBindOp,       5, 7, "tagName type ?sequence command?",},
-    {"cget",       2, ColumnCgetOp,       5, 5, "field option",},
-    {"configure",  2, ColumnConfigureOp,  4, 0, "field ?option value?...",},
+    {"cget",       2, ColumnCgetOp,       5, 5, "columnName option",},
+    {"configure",  2, ColumnConfigureOp,  4, 0, "columnName ?option value?...",},
     {"current",    2, ColumnCurrentOp,    3, 3, "",},
-    {"delete",     3, ColumnDeleteOp,     3, 0, "?field...?",},
-    {"exists",     1, ColumnExistsOp,     4, 4, "field",},
-    {"index",      3, ColumnIndexOp,      4, 4, "field",},
+    {"delete",     3, ColumnDeleteOp,     3, 0, "?columnName...?",},
+    {"exists",     1, ColumnExistsOp,     4, 4, "columnName",},
+    {"index",      3, ColumnIndexOp,      4, 4, "columnName",},
     {"insert",     3, ColumnInsertOp,     5, 0, 
-        "position field ?field...? ?option value?...",},
+        "position columnName ?columnName...? ?option value?...",},
     {"names",      2, ColumnNamesOp,      3, 3, "",},
     {"nearest",    2, ColumnNearestOp,    4, 5, "x ?y?",},
     {"resize",     1, ColumnResizeOp,     3, 0, "arg",},
@@ -12118,7 +12120,12 @@ EntryActivateOp(ClientData clientData, Tcl_Interp *interp, int objc,
  * EntryBindOp --
  *
  *        pathName entry bind entryName type sequence command
+ *
  * types: cell, button (label, icon)
+ *	button already handled by button bind operation.
+ *	icon is not used.  Add entry identify to allow this.
+ *
+ *	cells for the entry...
  *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
@@ -15692,7 +15699,7 @@ StyleGetOp(ClientData clientData, Tcl_Interp *interp, int objc,
  *      A standard TCL result.  If TCL_ERROR is returned, then interp->result
  *      contains an error message.
  *
- *      pathName style set styleName fieldName ?entryName ...?
+ *      pathName style set styleName columnName ?entryName ...?
  *
  *---------------------------------------------------------------------------
  */

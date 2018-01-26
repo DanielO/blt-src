@@ -510,13 +510,22 @@ command.  The following operation are available for *treeview* widgets:
   **-recurse**
     Recursively close each descendant. 
   
-*pathName* **column activate** ?\ *columnName*\ ?
-  Sets or gets the active column.  If no *columnName* argument is given,
-  this command returns the name of the currently active column.  Otherwise
-  *columnName* is the name of a column in the *treeview* widget to be made
-  active. When a column is active, it's drawn using its
-  **-activetitlebackground** and **-activetitleforeground** colors. If
-  *columnName* is the "", then no column will be active.
+*pathName* **column bind** *tagName* ?\ *sequence*\ ? ?\ *cmdString*\ ?
+  Associates *cmdString* with *tagName* such that whenever the event sequence
+  given by *sequence* occurs for an button of a node entry with this tag,
+  *cmdString* will be invoked.  The syntax is similar to the **bind** command
+  except that it operates on **treeview** columns, rather than widgets. See
+  the Tk **bind** manual entry for complete details on *sequence* and the
+  substitutions performed on *cmdString* before invoking it.
+
+  If all arguments are specified then a new binding is created, replacing
+  any existing binding for the same *sequence* and *tagName*.  If the first
+  character of *cmdString* is "+" then *cmdString* augments an existing binding
+  rather than replacing it.  If no *cmdString* argument is provided then the
+  command currently associated with *tagName* and *sequence* (it's an error
+  occurs if there's no such binding) is returned.  If both *cmdString* and
+  *sequence* are missing then a list of all the event sequences for which
+  bindings have been defined for *tagName*.
 
 *pathName* **column cget** *columnName* *option*
   Returns the current value of a column configuration option for
@@ -689,11 +698,6 @@ command.  The following operation are available for *treeview* widgets:
   columns. *InsertPos* can be an index or "end". For example, if *insertPos*
   is "0", the new column will be the left most column.
 
-*pathName* **column invoke** *columnName*
-  Invokes the TCL command associated with *columnName*, if there is one
-  (see the column's **-command** option).  This command is ignored if the
-  column's **-state** option set to "disabled".
-
 *pathName* **column move** *srcName* *destName* 
   Moves the column *srcName* to the destination position.  *SrcName* is the
   name of a column.  *DestName* can be either the name of another column or
@@ -720,6 +724,135 @@ command.  The following operation are available for *treeview* widgets:
   **-title**
     Return the name of the column only if the pointer is over the column's
     title.
+
+*pathName* **column resize bind** *tagName* ?\ *sequence*\ ? ?\
+  *cmdString*\ ?  
+  Associates *cmdString* with *tagName* such that whenever the event
+  sequence given by *sequence* occurs for a column resize region with this
+  tag, *cmdString* will be invoked.  The syntax is similar to the **bind**
+  command except that it operates on **treeview** column resize regions,
+  rather than widgets. See the Tk **bind** manual entry for complete
+  details on *sequence* and the substitutions performed on *cmdString*
+  before invoking it.
+
+  If all arguments are specified then a new binding is created, replacing
+  any existing binding for the same *sequence* and *tagName*.  If the first
+  character of *cmdString* is "+" then *cmdString* augments an existing binding
+  rather than replacing it.  If no *cmdString* argument is provided then the
+  command currently associated with *tagName* and *sequence* (it's an error
+  occurs if there's no such binding) is returned.  If both *cmdString* and
+  *sequence* are missing then a list of all the event sequences for which
+  bindings have been defined for *tagName*.
+
+*pathName* **column title activate** ?\ *columnName*\ ?
+  Sets or gets the active title column.  If no *columnName* argument is
+  given, this command returns the name of the currently active column.
+  Otherwise *columnName* is the name of a column in the *treeview* widget
+  to be made active. When a column is active, it's drawn using its
+  **-activetitlebackground** and **-activetitleforeground** colors. If
+  *columnName* is the "", then no column will be active.
+
+*pathName* **column title bind** *tagName* ?\ *sequence*\ ? ?\ *cmdString*\ ?
+  Associates *cmdString* with *tagName* such that whenever the event
+  sequence given by *sequence* occurs for a column title with this tag,
+  *cmdString* will be invoked.  The syntax is similar to the **bind**
+  command except that it operates on **treeview** column titles, rather
+  than widgets. See the Tk **bind** manual entry for complete details on
+  *sequence* and the substitutions performed on *cmdString* before invoking
+  it.
+
+  If all arguments are specified then a new binding is created, replacing
+  any existing binding for the same *sequence* and *tagName*.  If the first
+  character of *cmdString* is "+" then *cmdString* augments an existing binding
+  rather than replacing it.  If no *cmdString* argument is provided then the
+  command currently associated with *tagName* and *sequence* (it's an error
+  occurs if there's no such binding) is returned.  If both *cmdString* and
+  *sequence* are missing then a list of all the event sequences for which
+  bindings have been defined for *tagName*.
+
+*pathName* **column title cget** *columnName* *option*
+  Returns the current value of a column title configuration option for title of
+  *columnName*.  *ColumnName* is the name of column in the widget that
+  corresponds to a data field in the tree.  *Option* may have any of the
+  values accepted by the **column title configure** operation described
+  below.
+
+*pathName* **column title configure** *columnName* ?\ *option*\ ? ?\ *value*\ ? ?\ *option* *value* ... ?
+  Query or modify the title configuration options of the column designated by
+  *columnName*. *ColumnName* is the name of the column in the widget that
+  corresponds to a data field in the tree.  If no *option* is specified,
+  returns a list describing all of the available options for *pathName*
+  (see **Tk_ConfigureInfo** for information on the format of this list).
+  If *option* is specified with no *value*, then the command returns a list
+  describing the one named option (this list will be identical to the
+  corresponding sublist of the value returned if no *option* is specified).
+  If one or more *option*-*value* pairs are specified, then the command
+  modifies the given widget option(s) to have the given value(s); in this
+  case the command returns an empty string.  *Option* and *value* are
+  described below.
+
+  **-activebackground** *bgName*
+
+  **-activeforeground** *colorName*
+
+  **-bindtags** *tagList*
+    Specifies the binding tags *columnName*.  *TagList* is a list of binding
+    tag names.  The tags and their order will determine how events are
+    handled for columns.  Each tag in the list matching the current event
+    sequence will have its TCL command executed.  The default value is
+    "all".
+
+  **-background** *bgName* 
+    Sets the background color of the column title.  The default is "black".
+    FIXME
+    
+  **-borderwidth** *numPixels*
+    Sets the width of the 3-D border around the column title.  The
+    **-titlerelief** option determines if a border is to be drawn.  The
+    default is "0".
+
+  **-borderwidth** *numPixels*
+    Sets the width of the 3-D border of the column.  The column's
+    **-relief** option (see below) determines if a border is to be drawn.
+    The default is "0".
+
+  **-command** *cmdPrefix*
+    Specifies a TCL procedure to be called when column's **invoke**
+    operation is executed.  This typically happens when the column title is
+    clicked.  *CmdPrefix* is called with 2 extra arguments (the pathname of
+    the widget and the name of the column) that are appended to the end.
+    
+  **-font** *fontName* 
+    Sets the font for a column's title. The default is "{Sans Serif} 9".
+
+  **-foreground** *colorName* 
+    Sets the foreground color of the column title.  The default is "black".
+
+  **-justify** *justify*
+    Specifies how the column title should be justified within the column.
+    This matters only when the column is wider than the title.  *Justify*
+    must be "left", "right", or "center".  The default is "left".
+
+  **-relief** *reliefName*
+    Specifies the 3-D effect of the column title.  *ReliefName* specifies
+    how the title should appear relative to the widget. Acceptable values
+    are **raised**, **sunken**, **flat**, **ridge**, **solid**, and
+    **groove**. For example, "raised" means the column title should appear
+    to protrude.  The default is "flat".
+
+  **-text** *string*
+    Sets the title for *columnName*.  The default is "".
+
+*pathName* **column title deactivate** 
+  Redisplays all column titles using their normal colors.  This typically
+  is used by widget bindings to un-highlight columns as the pointer is moved
+  over the widget.
+
+*pathName* **column title invoke** *columnName*
+  Invokes the TCL command associated with the title of *columnName*, if
+  there is one (see the column's **-command** option).  Normally this
+  command is invoked by clicking on the column title.  This command is
+  ignored if the column's **-state** option set to "disabled".
 
 *pathName* **configure** ?\ *option*\ ? ?\ *value*\ ? ? *option value* ... ?
   Query or modify the configuration options of the widget.  If no *option*
