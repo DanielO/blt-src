@@ -4341,6 +4341,9 @@ DestroyTab(Tab *tabPtr)
     if (tabPtr == setPtr->selectPtr) {
         setPtr->selectPtr = NULL;
     }
+    if (tabPtr == setPtr->slidePtr) {
+        setPtr->slidePtr = NULL;
+    }
     if (tabPtr == setPtr->focusPtr) {
         setPtr->focusPtr = NULL;
         Blt_SetFocusItem(setPtr->bindTable, NULL, NULL);
