@@ -10478,6 +10478,8 @@ CloseOp(ClientData clientData, Tcl_Interp *interp, int objc,
  *        pathName column bind tag type sequence command
  *
  *	title	handled by column title bind
+ *	resize	handled by column resize bind
+ *	cells?
  *	
  *---------------------------------------------------------------------------
  */
@@ -10487,7 +10489,6 @@ ColumnBindOp(ClientData clientData, Tcl_Interp *interp, int objc,
              Tcl_Obj *const *objv)
 {
     BindTag tag;
-    Column *colPtr;
     ItemType type;
     TreeView *viewPtr = clientData;
     char c;
@@ -10510,7 +10511,7 @@ ColumnBindOp(ClientData clientData, Tcl_Interp *interp, int objc,
     /* Bind tags are either node ids (numbers) or arbitary strings (not to
      * be confused with tree node tags). */
     if (Blt_ObjIsInteger(objv[3])) {
-	Entry *entryPtr;
+	Column *colPtr;
 
 	if (GetColumnFromObj(interp, viewPtr, objv[3], &colPtr) != TCL_OK) {
 	    return TCL_ERROR;
@@ -11055,15 +11056,15 @@ ColumnResizeBindOp(ClientData clientData, Tcl_Interp *interp, int objc,
     /* Bind tags are either node ids (numbers) or arbitary strings (not to
      * be confused with tree node tags). */
     if (Blt_ObjIsInteger(objv[4])) {
-	Entry *entryPtr;
+	Column *colPtr;
 
-	if (GetEntry(interp, viewPtr, objv[4], &entryPtr) != TCL_OK) {
+	if (GetColumnFromObj(interp, viewPtr, objv[4], &colPtr) != TCL_OK) {
 	    return TCL_ERROR;
 	}
-        if (entryPtr == NULL) {
+        if (colPtr == NULL) {
             return TCL_OK;      /* Special id doesn't currently exist. */
         }
-        tag = MakeBindTag(viewPtr, entryPtr, item);
+        tag = MakeBindTag(viewPtr, colPtr, item);
     } else {
         tag = MakeStringBindTag(viewPtr, Tcl_GetString(objv[4]), item);
     } 
@@ -11090,6 +11091,7 @@ ColumnResizeDeactivateOp(ClientData clientData, Tcl_Interp *interp, int objc,
                          Tcl_Obj *const *objv)
 {
     TreeView *viewPtr = clientData;
+
     if (viewPtr->cursor != None) {
         Tk_DefineCursor(viewPtr->tkwin, viewPtr->cursor);
     } else {
@@ -11686,7 +11688,6 @@ ColumnTitleBindOp(ClientData clientData, Tcl_Interp *interp, int objc,
 		  Tcl_Obj *const *objv)
 {
     BindTag tag;
-    Column *colPtr;
     ItemType type;
     TreeView *viewPtr = clientData;
     
@@ -11694,7 +11695,7 @@ ColumnTitleBindOp(ClientData clientData, Tcl_Interp *interp, int objc,
     /* Bind tags are either node ids (numbers) or arbitary strings (not to
      * be confused with tree node tags). */
     if (Blt_ObjIsInteger(objv[4])) {
-	Entry *entryPtr;
+	Column *colPtr;
 
 	if (GetColumnFromObj(interp, viewPtr, objv[4], &colPtr) != TCL_OK) {
 	    return TCL_ERROR;
@@ -12125,6 +12126,7 @@ EntryActivateOp(ClientData clientData, Tcl_Interp *interp, int objc,
  *	button already handled by button bind operation.
  *	icon is not used.  Add entry identify to allow this.
  *
+ *	entire entry
  *	cells for the entry...
  *---------------------------------------------------------------------------
  */
@@ -12147,7 +12149,7 @@ EntryBindOp(ClientData clientData, Tcl_Interp *interp, int objc,
     } else if ((c == 'b') && (strncmp(string, "button", length) == 0)) {
         type = ITEM_BUTTON;
     } else {
-        Tcl_AppendResult(interp, "Bad column bind tag type \"", string, "\"",
+        Tcl_AppendResult(interp, "Bad entry bind tag type \"", string, "\"",
                          (char *)NULL);
         return TCL_ERROR;
     }
