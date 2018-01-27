@@ -910,7 +910,7 @@ ObjToLayoutMode(ClientData clientData, Tcl_Interp *interp, Tk_Window tkwin,
     char *string;
     char c;
     int *modePtr = (int *)(widgRec + offset);
-
+    
     string = Tcl_GetString(objPtr);
     c = string[0];
     if ((c == 'c') && (strcmp(string, "columns") == 0)) {
@@ -923,7 +923,8 @@ ObjToLayoutMode(ClientData clientData, Tcl_Interp *interp, Tk_Window tkwin,
         *modePtr = LAYOUT_ICONS;
     } else {
         Tcl_AppendResult(interp, "bad select mode \"", string,
-            "\": should be column, row, rows, or icons.", (char *)NULL);
+            "\": should be columns, row, rows, or icons.",
+            (char *)NULL);
         return TCL_ERROR;
     }
     viewPtr->flags |= LAYOUT_PENDING | GEOMETRY;
