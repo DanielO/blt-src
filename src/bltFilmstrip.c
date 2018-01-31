@@ -952,24 +952,22 @@ ObjToOrient(ClientData clientData, Tcl_Interp *interp, Tk_Window parent,
            Tcl_Obj *objPtr, char *widgRec, int offset, int flags)  
 {
     Filmstrip *filmPtr = (Filmstrip *)(widgRec);
-    unsigned int *flagsPtr = (unsigned int *)(widgRec + offset);
+    char c;
     const char *string;
-    int orient;
     int length;
+    unsigned int *flagsPtr = (unsigned int *)(widgRec + offset);
 
-    string = Tcl_GetString(objPtr);
-    length = strlen(string);
-    if (strncmp(string, "vertical", length) == 0) {
-        orient = VERTICAL;
-    } else if (strncmp(string, "horizontal", length) == 0) {
-        orient = 0;
+    string = Tcl_GetStringFromObj(objPtr, &length);
+    c = string[0];
+    if ((c == 'v') && (strncmp(string, "vertical", length) == 0)) {
+        *flagsPtr |= VERTICAL;
+    } else if ((c == 'h') && (strncmp(string, "horizontal", length) == 0)) {
+        *flagsPtr &= ~VERTICAL;
     } else {
         Tcl_AppendResult(interp, "bad orientation \"", string,
             "\": must be vertical or horizontal", (char *)NULL);
         return TCL_ERROR;
     }
-    *flagsPtr &= ~VERTICAL;
-    *flagsPtr |= orient;
     filmPtr->flags |= LAYOUT_PENDING;
     return TCL_OK;
 }
