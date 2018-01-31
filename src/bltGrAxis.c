@@ -2830,7 +2830,7 @@ AxisOffsets(Axis *axisPtr, AxisInfo *infoPtr)
                 axisLine--;
             }  
             axisLine -= axisPad + axisPtr->lineWidth / 2;
-            tickLabel = graphPtr->y1 - graphPtr->plotBorderWidth - 2;
+            tickLabel = axisLine -  AXIS_PAD_TITLE;
         }
         mark = graphPtr->y1 - axisPtr->marginPtr->nextLayerOffset - pad;
         axisPtr->tickAnchor = TK_ANCHOR_S;
@@ -2857,7 +2857,7 @@ AxisOffsets(Axis *axisPtr, AxisInfo *infoPtr)
         }
         axisPtr->titlePos.x = x;
         axisPtr->titlePos.y = y;
-        infoPtr->colorbar = axisLine - axisPtr->colorbar.thickness;
+        infoPtr->colorbar = axisLine;
         break;
 
     case MARGIN_BOTTOM:
@@ -2892,10 +2892,10 @@ AxisOffsets(Axis *axisPtr, AxisInfo *infoPtr)
             }
         } else {
             axisLine -= axisPad + axisPtr->lineWidth / 2;
-            tickLabel = graphPtr->y2 +  graphPtr->plotBorderWidth + 2;
             if (graphPtr->plotRelief != TK_RELIEF_SOLID) {
                 axisLine--;
             }
+            tickLabel = axisLine +  AXIS_PAD_TITLE;
         }
         fangle = FMOD(axisPtr->tickAngle, 90.0f);
         if (fangle == 0.0) {
@@ -2999,7 +2999,7 @@ AxisOffsets(Axis *axisPtr, AxisInfo *infoPtr)
                 axisLine--;
             }
             axisLine += axisPad + axisPtr->lineWidth / 2;
-            tickLabel = graphPtr->x1 - graphPtr->plotBorderWidth - 2;
+            tickLabel = axisLine -  AXIS_PAD_TITLE;
         }
         axisPtr->tickAnchor = TK_ANCHOR_E;
         mark = graphPtr->x1 - graphPtr->plotBorderWidth -
@@ -3484,16 +3484,22 @@ GradientCalcProc(ClientData clientData, int x, int y, double *valuePtr)
     if ((axisPtr->marginPtr->side == MARGIN_Y) ||
         (axisPtr->marginPtr->side == MARGIN_Y2)) {
         if (graphPtr->flags & INVERTED) {
-            t = (double)(x - axisPtr->screenMin) * axisPtr->screenScale;
+            t = (double)x * axisPtr->screenScale;
         } else {
-            t = (double)(y - axisPtr->screenMin) * axisPtr->screenScale;
+            t = (double)y * axisPtr->screenScale;
+        }
+        if (!axisPtr->decreasing) {
+            t = 1.0 - t;
         }
     } else if ((axisPtr->marginPtr->side == MARGIN_X) ||
                (axisPtr->marginPtr->side == MARGIN_X2)) {
         if (graphPtr->flags & INVERTED) {
-            t = (double)(y - axisPtr->screenMin) * axisPtr->screenScale;
+            t = (double)y * axisPtr->screenScale;
         } else {
-            t = (double)(x - axisPtr->screenMin) * axisPtr->screenScale;
+            t = (double)x * axisPtr->screenScale;
+        }
+        if (axisPtr->decreasing) {
+            t = 1.0 - t;
         }
     } else {
         return TCL_ERROR;
