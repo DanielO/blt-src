@@ -1,6 +1,8 @@
 package require BLT
 source ./data/dentalscan.tcl 
 
+#option add *Axis.tickDirection in
+
 blt::vector create dentalscan
 dentalscan set $data
 
@@ -12,7 +14,10 @@ set palette spectral.rgb
 .g element create myContour -values dentalscan -mesh $mesh 
 .g isoline steps 6 -element myContour
 .g legend configure -hide yes
-.g axis configure z -palette $palette -margin left -colorbarthickness 20 
+.g axis configure z \
+	-palette $palette \
+	-margin left \
+	-colorbarthickness 20 
 proc UpdateColors {} {
      global usePaletteColors
      if { $usePaletteColors } {
