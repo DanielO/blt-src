@@ -3189,7 +3189,7 @@ GetStringObj(RestoreInfo *restorePtr, const char *string, int length)
     if (isNew) {
         Tcl_Obj *objPtr;
 
-        if (length == -1) {
+        if (length < 0) {
             length = strlen(string);
         }
         objPtr = Tcl_NewStringObj(string, length);

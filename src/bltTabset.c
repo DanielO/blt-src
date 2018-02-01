@@ -1296,7 +1296,9 @@ GetTabByIndex(Tcl_Interp *interp, Tabset *setPtr, const char *string,
 
     tabPtr = NULL;
     c = string[0];
-    length = strlen(string);
+    if (length < 0) {
+        length = strlen(string);
+    }
     if (Blt_GetInt64(NULL, string, &pos) == TCL_OK) {
         Blt_ChainLink link;
 
