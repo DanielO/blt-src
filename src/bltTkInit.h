@@ -83,6 +83,9 @@ BLT_EXTERN Tcl_AppInitProc Blt_AfmCmdInitProc;
 #ifndef NO_PICTURE
 BLT_EXTERN Tcl_AppInitProc Blt_PictureCmdInitProc;
 #endif
+#ifndef NO_SCALE
+BLT_EXTERN Tcl_AppInitProc Blt_ScaleCmdInitProc;
+#endif
 #ifndef NO_TABLEMGR
 BLT_EXTERN Tcl_AppInitProc Blt_TableMgrCmdInitProc;
 #endif

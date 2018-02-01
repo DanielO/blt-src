@@ -429,6 +429,7 @@ BLT_TK_SO_OBJS =	$(GRAPH_OBJS) \
 			bltPictCmd.o \
 			bltPictDraw.o \
 			bltPs.o \
+			bltScale.o \
 			bltScrollset.o \
 			bltTable.o \
 			bltTabset.o \

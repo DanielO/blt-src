@@ -2,9 +2,9 @@
 /*
  * bltScale.c --
  *
- *      This module implements coordinate axes for the BLT graph widget.
+ *      This module implements a range scale for BLT.
  *
- * Copyright 2015 George A. Howlett. All rights reserved.  
+ * Copyright 2018 George A. Howlett. All rights reserved.  
  *
  *   Redistribution and use in source and binary forms, with or without
  *   modification, are permitted provided that the following conditions are
@@ -57,17 +57,53 @@
 #include <X11/Xutil.h>
 #include "bltAlloc.h"
 #include "bltBind.h"
-#include "bltPs.h"
 #include "bltPaintBrush.h"
 #include "bltPalette.h"
 #include "bltPicture.h"
 #include "bltBg.h"
 #include "bltSwitch.h"
-#include "bltTags.h"
-#include "bltGraph.h"
-#include "bltGrAxis.h"
-#include "bltGrLegd.h"
-#include "bltGrElem.h"
+
+#include <time.h>
+#include <sys/time.h>
+
+#define MAXTICKS        10001
+
+#define FCLAMP(x)       ((((x) < 0.0) ? 0.0 : ((x) > 1.0) ? 1.0 : (x)))
+
+/*
+ * Round x in terms of units
+ */
+#define UROUND(x,u)     (round((x)/(u))*(u))
+#define UCEIL(x,u)      (ceil((x)/(u))*(u))
+#define UFLOOR(x,u)     (floor((x)/(u))*(u))
+
+#define NUMDIGITS       15              /* Specifies the number of digits
+                                         * of accuracy used when outputting
+                                         * axis tick labels. */
+#define AXIS_PAD_TITLE          2       /* Padding for axis title. */
+#define TICK_PAD                2
+#define COLORBAR_PAD            4
+#define PADX                    4
+#define PADY                    2
+
+#define HORIZONTAL(s)   (((s)->flags & VERTICAL) == 0) 
+
+#define SECONDS_SECOND        (1)
+#define SECONDS_MINUTE        (60)
+#define SECONDS_HOUR          (SECONDS_MINUTE * 60)
+#define SECONDS_DAY           (SECONDS_HOUR * 24)
+#define SECONDS_WEEK          (SECONDS_DAY * 7)
+#define SECONDS_MONTH         (SECONDS_DAY * 30)
+#define SECONDS_YEAR          (SECONDS_DAY * 365)
+
+static const int numDaysMonth[2][13] = {
+    {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31, 31},
+    {31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31, 31}
+} ;
+static const int numDaysYear[2] = { 365, 366 };
+
+#   define EPOCH           1970
+#   define EPOCH_WDAY      4            /* Thursday. */
 
 #define IsLeapYear(y) \
         ((((y) % 4) == 0) && ((((y) % 100) != 0) || (((y) % 400) == 0)))
@@ -95,6 +131,7 @@
 #define ACTIVE          (1<<13)         /* Scale is drawn in its active
                                          * foreground/background colors and
                                          * relief. */
+#define STATE_MASK      (NORMAL|ACTIVE|DISABLED)              
 #define TIGHT           (1<<14)         /* Axis line stops at designated
                                          * outer interval limits. Otherwise
                                          * the axis line will extend in
@@ -103,11 +140,27 @@
 #define VERTICAL        (1<<15)         /* Scale is oriented vertically. */
 #define AUTO_MAJOR      (1<<16)         /* Auto-generate major ticks. */
 #define AUTO_MINOR      (1<<17)         /* Auto-generate minor ticks. */
+#define REDRAW_PENDING  (1<<18)         /* Indicates the scale needs to be
+                                         * redrawn at the next idle
+                                         * point. */
+#define ACTIVE_MAXARROW (1<<19)
+#define ACTIVE_MINARROW (1<<20)
+#define ACTIVE_GRIP     (1<<21)
 #define EXTERIOR        (1<<22)         /* Ticks are exterior colorbar. */
 #define CHECK_LIMITS    (1<<23)         /* Validate user-defined axis
                                          * limits. */
+#define FOCUS           (1<<24)
 #define DECREASING      (1<<25)         /* Axis is decreasing in order. */
 #define LABELOFFSET     (1<<28)
+
+typedef enum ScaleParts {
+    PICK_NONE,
+    PICK_TITLE,
+    PICK_MINARROW,
+    PICK_MAXARROW,
+    PICK_GRIP,
+    PICK_COLORBAR,
+} ScalePart;
 
 typedef enum _AxisScales {
     AXIS_LINEAR,
@@ -166,7 +219,7 @@ typedef struct {
 /*
  *---------------------------------------------------------------------------
  *
- * TickLabel --
+ * Tick --
  *
  *      Structure containing the X-Y screen coordinates of the tick label
  *      (anchored at its center).
@@ -187,7 +240,7 @@ typedef struct {
  * Ticks --
  *
  *      Structure containing information where the ticks (major or minor)
- *      will be displayed on the graph.
+ *      will be displayed on the scale.
  *
  *---------------------------------------------------------------------------
  */
@@ -219,7 +272,7 @@ typedef struct {
 typedef struct {
     Blt_Palette palette;                /* Color palette for colorbar. */
     int thickness;
-    XRectangle rect;                    /* Location of colorbar. */
+    int x, y, width, height;
 } Colorbar;
 
 /*
@@ -232,15 +285,16 @@ typedef struct {
  *
  *---------------------------------------------------------------------------
  */
-struct _Scale {
+typedef struct _Scale {
     Tk_Window tkwin;                    /* Window that embodies the widget.
-                                         * NULL means that the window has been
-                                         * destroyed but the data structures
-                                         * haven't yet been cleaned up.*/
-    Display *display;                   /* Display containing widget; needed,
-                                         * among other things, to release
-                                         * resources after tkwin has already
-                                         * gone away. */
+                                         * NULL means that the window has
+                                         * been destroyed but the data
+                                         * structures haven't yet been
+                                         * cleaned up.*/
+    Display *display;                   /* Display containing widget;
+                                         * needed, among other things, to
+                                         * release resources after tkwin
+                                         * has already gone away. */
     Tcl_Interp *interp;                 /* Interpreter associated with
                                          * widget. */
     Tcl_Command cmdToken;               /* Token for widget's command. */
@@ -248,11 +302,11 @@ struct _Scale {
                                          * below */
 
     int inset;                          /* Total width of all borders,
-                                         * including traversal highlight and
-                                         * 3-D border.  Indicates how much
-                                         * interior stuff must be offset from
-                                         * outside edges to leave room for
-                                         * borders. */
+                                         * including traversal highlight
+                                         * and 3-D border.  Indicates how
+                                         * much interior stuff must be
+                                         * offset from outside edges to
+                                         * leave room for borders. */
     int relief;
     int borderWidth;
     int activeRelief;
@@ -270,16 +324,19 @@ struct _Scale {
     Blt_Bg normalBg;                    /* Nomal background color. */
     Blt_Bg activeBg;                    /* Active background color. */
     Blt_Bg disabledBg;                  /* Disabled background color. */
+    XColor *disabledFgColor;
+    XColor *activeFgColor;
+    XColor *normalFgColor;
 
     Blt_Bg normalGripBg;
     Blt_Bg activeGripBg;
     XColor *activeGripFgColor;
     XColor *normalGripFgColor;
 
-    XColor *minArrowFgColor;
-    XColor *maxArrowFgColor;
-    XColor *activeMinArrowFgColor;
-    XColor *activeMaxArrowFgColor;
+    XColor *normalMinArrowColor;
+    XColor *normalMaxArrowColor;
+    XColor *activeMinArrowColor;
+    XColor *activeMaxArrowColor;
 
     double outerLeft, outerRight;       /* Outer interval.  Ticks may be
                                          * drawn outside of the interval
@@ -307,23 +364,13 @@ struct _Scale {
                                          * values lie outside the range of
                                          * data values.  This is used to
                                          * for "loose" mode. */
-    const char *detail;
     AxisScale scale;                    /* How to scale the scale: linear,
                                          * logrithmic, or time. */
     
-    double windowSize;                  /* Size of a sliding window of
-                                         * values used to scale the scale
-                                         * automatically as new data values
-                                         * are added. The scale will always
-                                         * display the latest values in
-                                         * this range. */
-    double shiftBy;                     /* Shift maximum by this
-                                         * interval. */
     Tcl_Obj *fmtCmdObjPtr;              /* Specifies a TCL command, to be
                                          * invoked by the scale whenever it
                                          * has to generate tick labels. */
-    Tcl_Obj *scrollCmdObjPtr;
-    int scrollUnits;
+    Tcl_Obj *varNameObjPtr;
 
     double min, max;                    /* The actual scale range. */
     double reqMin, reqMax;              /* Requested scale bounds. Consult
@@ -335,13 +382,11 @@ struct _Scale {
                                          * of the scale (determined by
                                          * auto-scaling). */
 
-    double reqScrollMin, reqScrollMax;
-    double scrollMin, scrollMax;        /* Defines the scrolling reqion of
-                                         * the scale.  Normally the region
-                                         * is determined from the data
-                                         * limits. If specified, these
-                                         * values override the
-                                         * data-range. */
+    Blt_BindTable bindTable;            /* Scale binding information */
+    Blt_Painter painter;
+
+    double currentValue;
+
     double tickMin, tickMax;            /* Tick range in linear scale. */
     double prevMin, prevMax;
     double reqStep;                     /* If > 0.0, overrides the computed
@@ -360,15 +405,17 @@ struct _Scale {
                                          * ticks to be uniformally
                                          * displayed along each major
                                          * tick. */
+    int reqWidth, reqHeight;
+
     int labelOffset;                    /* If non-zero, indicates that the
                                          * tick label should be offset to
                                          * sit in the middle of the next
                                          * interval. */
 
-    /* The following fields are specific to logical axes */
+    int x1, y1, x2, y2;                 /* Location of axis. */
 
     Blt_Chain chain;
-    Segment2d *tickSegments;            /* Array of line segments
+    XSegment *tickSegments;             /* Array of line segments
                                          * representing the major and minor
                                          * ticks. The segment coordinates
                                          * are relative to the axis. */
@@ -379,10 +426,17 @@ struct _Scale {
                                          * the axis. */
     short int left, right, top, bottom; /* Region occupied by the of axis. */
     short int width, height;            /* Extents of axis */
-    short int maxLabelWidth;            /* Maximum width of all ticks
-                                         * labels. */
-    short int maxLabelHeight;           /* Maximum height of all tick
-                                         * labels. */
+    short int maxTickLabelWidth;        /* Maximum (possibly rotated) width
+                                         * of all ticks labels. */ 
+    short int maxTickLabelHeight;       /* Maximum (possibly rotated)
+                                         * height of all tick labels. */
+
+    Blt_Picture activeMaxArrow;
+    Blt_Picture normalMaxArrow;
+    Blt_Picture disabledMaxArrow;
+    Blt_Picture activeMinArrow;
+    Blt_Picture normalMinArrow;
+    Blt_Picture disabledMinArrow;
 
     float tickAngle;    
     Blt_Font tickFont;
@@ -393,114 +447,101 @@ struct _Scale {
                                          * tick labels */
     GC activeTickGC;
     GC disabledTickGC;
+    GC disabledGC;
+    GC axisGC;                          /* For the axis line. */
+    GC innerGC;                         /* For the inner interval line. */
+    GC currentGC;                       /* For the current value line. */
+    GC drawGC;
 
     const char *title;                  /* Title of the scale. */
-    Point2d titlePos;                   /* Position of the title */
-    int titleWidth, titleHeight;  
+    int titleX, titleY, titleWidth, titleHeight;  
     Blt_Font titleFont;
     Tk_Anchor titleAnchor;
     Tk_Justify titleJustify;
     XColor *titleColor;
     
+    int gripWidth, gripHeight;
+    int gripBorderWidth;
+    int gripRelief;
+
     double screenScale;
+    int screenOffset;
     int screenMin, screenRange;
     Blt_Palette palette;
     float weight;
 
     Colorbar colorbar;
+} Scale;
+
+
+static double logTable[] = {
+    0.301029995663981,                  /* 1 */
+    0.477121254719662,                  /* 2 */
+    0.602059991327962,                  /* 3 */
+    0.698970004336019,                  /* 4 */
+    0.778151250383644,                  /* 5 */
+    0.845098040014257,                  /* 6 */
+    0.903089986991944,                  /* 7 */
+    0.954242509439325,                  /* 8 */
 };
 
-static void GetAxisGeometry(Scale *scalePtr);
-
-#define MAXTICKS        10001
-
-#define FCLAMP(x)       ((((x) < 0.0) ? 0.0 : ((x) > 1.0) ? 1.0 : (x)))
-
-/*
- * Round x in terms of units
- */
-#define UROUND(x,u)     (round((x)/(u))*(u))
-#define UCEIL(x,u)      (ceil((x)/(u))*(u))
-#define UFLOOR(x,u)     (floor((x)/(u))*(u))
-
-#define NUMDIGITS       15              /* Specifies the number of digits
-                                         * of accuracy used when outputting
-                                         * axis tick labels. */
-#define AXIS_PAD_TITLE          2       /* Padding for axis title. */
-#define TICK_PAD                2
-#define COLORBAR_PAD            4
-
-#define HORIZONTAL(s)   (((s)->flags & VERTICAL) == 0) 
-
-
-#define DEF_ACTIVEBACKGROUND    STD_ACTIVE_BACKGROUND
-#define DEF_ACTIVEFOREGROUND    STD_ACTIVE_FOREGROUND
-#define DEF_ACTIVERELIEF        "flat"
-#define DEF_ANGLE               "0.0"
-#define DEF_BACKGROUND          (char *)NULL
+#define DEF_ACTIVE_BG           STD_ACTIVE_BACKGROUND
+#define DEF_ACTIVE_FG           STD_ACTIVE_FOREGROUND
+#define DEF_ACTIVE_GRIP_BG      STD_ACTIVE_BACKGROUND
+#define DEF_ACTIVE_GRIP_FG      STD_ACTIVE_FOREGROUND
+#define DEF_ACTIVE_MAXARROW_COLOR STD_ACTIVE_BACKGROUND
+#define DEF_ACTIVE_MINARROW_COLOR STD_ACTIVE_BACKGROUND
+#define DEF_ACTIVE_RELIEF       "flat"
+#define DEF_AXIS_LINEWIDTH      "1"
+#define DEF_NORMAL_BG          STD_NORMAL_BACKGROUND
 #define DEF_BORDERWIDTH         "0"
 #define DEF_CHECKLIMITS         "0"
 #define DEF_COLORBAR_THICKNESS  "0"
 #define DEF_COMMAND             (char *)NULL
 #define DEF_DECREASING          "0"
+#define DEF_DISABLED_BG         STD_DISABLED_BACKGROUND
+#define DEF_DISABLED_FG         STD_DISABLED_FOREGROUND
 #define DEF_DIVISIONS           "10"
-#define DEF_FOREGROUND          RGB_BLACK
-#define DEF_HIDE                "0"
-#define DEF_JUSTIFY             "c"
-#define DEF_LIMITS_FONT         STD_FONT_NUMBERS
-#define DEF_LIMITS_FORMAT       (char *)NULL
-#define DEF_LINEWIDTH           "1"
-#define DEF_LOGSCALE            "0"
+#define DEF_NORMAL_FG          RGB_BLACK
+#define DEF_FORMAT_COMMAND      (char *)NULL
+#define DEF_HIDE                ""
 #define DEF_LOOSE               "0"
+#define DEF_MAX                 "10.0"
+#define DEF_MIN                 "1.0"
+#define DEF_NORMAL_GRIP_BG      STD_NORMAL_BACKGROUND
+#define DEF_NORMAL_GRIP_FG      STD_NORMAL_FORERGOUND
+#define DEF_NORMAL_MAXARROW_COLOR STD_NORMAL_BACKGROUND
+#define DEF_NORMAL_MINARROW_COLOR STD_NORMAL_BACKGROUND
+#define DEF_ORIENT              "horizontal"
 #define DEF_PALETTE             (char *)NULL
-#define DEF_RANGE               "0.0"
 #define DEF_RELIEF              "flat"
 #define DEF_SCALE               "linear"
-#define DEF_SCROLL_INCREMENT    "10"
-#define DEF_SHIFTBY             "0.0"
-#define DEF_SHOWTICKLABELS           "1"
-#define DEF_STEP                "0.0"
+#define DEF_SHOW                "all"
+#define DEF_STATE               "normal"
+#define DEF_STEPSIZE            "0.0"
 #define DEF_SUBDIVISIONS        "2"
 #define DEF_TAGS                "all"
-#define DEF_TICKFONT_BARCHART   STD_FONT_SMALL
-#define DEF_TICKFONT_GRAPH      STD_FONT_NUMBERS
-#define DEF_TICKLENGTH          "4"
 #define DEF_TICK_ANCHOR         "c"
+#define DEF_TICK_ANGLE          "0.0"
 #define DEF_TICK_DIRECTION      "out"
-#define DEF_TIMESCALE           "0"
-#define DEF_TITLE_ALTERNATE     "0"
-#define DEF_TITLE_FG            RGB_BLACK
+#define DEF_TICK_FONT            STD_FONT_NUMBERS
+#define DEF_TICK_LENGTH          "4"
+#define DEF_TICK_LINEWIDTH           "1"
+#define DEF_TITLE               (char *)NULL
+#define DEF_TITLE_COLOR         RGB_BLACK
 #define DEF_TITLE_FONT          STD_FONT_NORMAL
-#define DEF_WEIGHT              "1.0"
-
-/* Indicates how to rotate axis title for each margin. */
-static float titleAngle[4] = {
-    0.0, 90.0, 0.0, 270.0
-};
-
-typedef struct {
-    int axisLength;                     /* Length of the axis. */
-    int t1;                             /* Length of a major tick (in
-                                         * pixels). */
-    int t2;                             /* Length of a minor tick (in
-                                         * pixels). */
-    int label;                          /* Distance from axis to tick
-                                         * label. */
-    int colorbar;
-} AxisInfo;
+#define DEF_TITLE_JUSTIFY       "c"
 
 static Blt_OptionParseProc ObjToLimit;
 static Blt_OptionPrintProc LimitToObj;
 static Blt_CustomOption limitOption = {
     ObjToLimit, LimitToObj, NULL, (ClientData)0
 };
-
 static Blt_OptionParseProc ObjToTickDirection;
 static Blt_OptionPrintProc TickDirectionToObj;
 static Blt_CustomOption tickDirectionOption = {
     ObjToTickDirection, TickDirectionToObj, NULL, (ClientData)0
 };
-
 static Blt_OptionFreeProc  FreeTicks;
 static Blt_OptionParseProc ObjToTicks;
 static Blt_OptionPrintProc TicksToObj;
@@ -510,58 +551,10 @@ static Blt_CustomOption majorTicksOption = {
 static Blt_CustomOption minorTicksOption = {
     ObjToTicks, TicksToObj, FreeTicks, (ClientData)AUTO_MINOR,
 };
-static Blt_OptionFreeProc  FreeAxis;
-static Blt_OptionPrintProc AxisToObj;
-static Blt_OptionParseProc ObjToAxis;
-Blt_CustomOption bltXAxisOption = {
-    ObjToAxis, AxisToObj, FreeAxis, (ClientData)CID_AXIS_X
-};
-Blt_CustomOption bltYAxisOption = {
-    ObjToAxis, AxisToObj, FreeAxis, (ClientData)CID_AXIS_Y
-};
-Blt_CustomOption bltZAxisOption = {
-    ObjToAxis, AxisToObj, FreeAxis, (ClientData)CID_AXIS_Z
-};
-
-Blt_CustomOption bltAxisOption = {
-    ObjToAxis, AxisToObj, FreeAxis, (ClientData)CID_NONE
-};
-
-static Blt_SwitchParseProc XAxisSwitch;
-static Blt_SwitchParseProc YAxisSwitch;
-static Blt_SwitchFreeProc FreeAxisSwitch;
-Blt_SwitchCustom bltXAxisSwitch =
-{
-    XAxisSwitch, NULL, FreeAxisSwitch, (ClientData)0
-};
-Blt_SwitchCustom bltYAxisSwitch =
-{
-    YAxisSwitch, NULL, FreeAxisSwitch, (ClientData)0
-};
-
 static Blt_OptionParseProc ObjToScale;
 static Blt_OptionPrintProc ScaleToObj;
 static Blt_CustomOption scaleOption = {
     ObjToScale, ScaleToObj, NULL, (ClientData)0,
-};
-
-static Blt_OptionParseProc ObjToTimeScale;
-static Blt_OptionPrintProc TimeScaleToObj;
-static Blt_CustomOption timeScaleOption = {
-    ObjToTimeScale, TimeScaleToObj, NULL, (ClientData)0,
-};
-
-static Blt_OptionParseProc ObjToLogScale;
-static Blt_OptionPrintProc LogScaleToObj;
-static Blt_CustomOption logScaleOption = {
-    ObjToLogScale, LogScaleToObj, NULL, (ClientData)0,
-};
-
-static Blt_OptionFreeProc  FreeFormat;
-static Blt_OptionParseProc ObjToFormat;
-static Blt_OptionPrintProc FormatToObj;
-static Blt_CustomOption formatOption = {
-    ObjToFormat, FormatToObj, FreeFormat, (ClientData)0,
 };
 static Blt_OptionFreeProc FreePalette;
 static Blt_OptionParseProc ObjToPalette;
@@ -570,7 +563,6 @@ static Blt_CustomOption paletteOption =
 {
     ObjToPalette, PaletteToObj, FreePalette, (ClientData)0
 };
-
 static Blt_OptionParseProc ObjToShowFlags;
 static Blt_OptionPrintProc ShowFlagsToObj;
 Blt_CustomOption showFlagsOption = {
@@ -579,13 +571,11 @@ Blt_CustomOption showFlagsOption = {
 Blt_CustomOption hideFlagsOption = {
     ObjToShowFlags, ShowFlagsToObj, NULL, (ClientData)FALSE
 };
-
 static Blt_OptionParseProc ObjToState;
 static Blt_OptionPrintProc StateToObj;
 static Blt_CustomOption stateOption = {
     ObjToState, StateToObj, NULL, (ClientData)0
 };
-
 static Blt_OptionParseProc ObjToOrient;
 static Blt_OptionPrintProc OrientToObj;
 static Blt_CustomOption orientOption = {
@@ -595,70 +585,66 @@ static Blt_CustomOption orientOption = {
 static Blt_ConfigSpec configSpecs[] =
 {
     {BLT_CONFIG_BACKGROUND, "-activebackground", "activeBackground", 
-        "ActiveBackground", DEF_ACTIVEBACKGROUND, Blt_Offset(Scale, activeBg),
+        "ActiveBackground", DEF_ACTIVE_BG, Blt_Offset(Scale, activeBg),
         BLT_CONFIG_NULL_OK},
     {BLT_CONFIG_COLOR, "-activeforeground", "activeForeground",
-        "ActiveForeground", DEF_ACTIVEFOREGROUND,
-        Blt_Offset(Scale, activeFgColor), 0}, 
+        "ActiveForeground", DEF_ACTIVE_FG, Blt_Offset(Scale, activeFgColor)}, 
     {BLT_CONFIG_BACKGROUND, "-activegripbackground", "activeGripBackground",
-        "ActiveGripBackground", DEF_ACTIVEGRIPBG, 
+        "ActiveGripBackground", DEF_ACTIVE_GRIP_BG, 
         Blt_Offset(Scale, activeGripBg), BLT_CONFIG_NULL_OK},
     {BLT_CONFIG_COLOR, "-activegripforeground", "activeGripForeground",
-        "ActiveGripForeground", DEF_ACTIVEGRIPFOREGROUND,
+        "ActiveGripForeground", DEF_ACTIVE_GRIP_FG,
         Blt_Offset(Scale, activeGripFgColor), 0}, 
     {BLT_CONFIG_COLOR, "-activemaxarrowbackground", "activeMaxArrowBackground", 
-        "ActiveMaxArrowBackground", DEF_ACTIVEMAXARROWBG,  
+        "ActiveMaxArrowBackground", DEF_ACTIVE_MAXARROW_COLOR,  
         Blt_Offset(Scale, activeMaxArrowColor), 0}, 
     {BLT_CONFIG_COLOR, "-activeminarrowbackground", "activeMinArrowBackground", 
-        "ActiveMinArrowBackground", DEF_ACTIVEMINARROWCOLOR,  
+        "ActiveMinArrowBackground", DEF_ACTIVE_MINARROW_COLOR,  
         Blt_Offset(Scale, activeMinArrowColor), 0}, 
     {BLT_CONFIG_RELIEF, "-activerelief", "activeRelief", "Relief",
-        DEF_ACTIVERELIEF, Blt_Offset(Scale, activeRelief),
-        BLT_CONFIG_DONT_SET_DEFAULT}, 
-    {BLT_CONFIG_DOUBLE, "-autorange", "autoRange", "AutoRange",
-        DEF_RANGE, Blt_Offset(Scale, windowSize),
+        DEF_ACTIVE_RELIEF, Blt_Offset(Scale, activeRelief),
         BLT_CONFIG_DONT_SET_DEFAULT}, 
     {BLT_CONFIG_PIXELS_NNEG, "-axislinewidth", "axisLineWidth", "AxisLineWidth",
-        DEF_LINEWIDTH, Blt_Offset(Scale, axisLineWidth),
+        DEF_AXIS_LINEWIDTH, Blt_Offset(Scale, axisLineWidth),
         BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_BACKGROUND, "-background", "background", "Background",
-        DEF_BACKGROUND, Blt_Offset(Scale, normalBg),
-        BLT_CONFIG_NULL_OK},
+        DEF_NORMAL_BG, Blt_Offset(Scale, normalBg), BLT_CONFIG_NULL_OK},
     {BLT_CONFIG_SYNONYM, "-bg", "background"},
     {BLT_CONFIG_SYNONYM, "-bindtags", "tags"},
     {BLT_CONFIG_SYNONYM, "-bd", "borderWidth"},
     {BLT_CONFIG_PIXELS_NNEG, "-borderwidth", "borderWidth", "BorderWidth",
         DEF_BORDERWIDTH, Blt_Offset(Scale, borderWidth),
         BLT_CONFIG_DONT_SET_DEFAULT},
-    {BLT_CONFIG_COLOR, "-color", "color", "Color", DEF_FOREGROUND,
+    {BLT_CONFIG_COLOR, "-color", "color", "Color", DEF_NORMAL_FG,
         Blt_Offset(Scale, tickColor), 0},
     {BLT_CONFIG_PIXELS_NNEG, "-colorbarthickness", "colorBarThickness", 
         "ColorBarThickness", DEF_COLORBAR_THICKNESS, 
         Blt_Offset(Scale, colorbar.thickness), BLT_CONFIG_DONT_SET_DEFAULT},
-    {BLT_CONFIG_OBJ, "-command", "command", "Command", DEF_COMMAND, 
-        Blt_Offset(Scale, fmtCmdObjPtr), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_OBJ, "-formatcommand", "formatCommand", "FormatCommand", 
+        DEF_FORMAT_COMMAND, Blt_Offset(Scale, fmtCmdObjPtr), 
+        BLT_CONFIG_NULL_OK},
     {BLT_CONFIG_BITMASK, "-decreasing", "decreasing", "Decreasing",
         DEF_DECREASING, Blt_Offset(Scale, flags),
         BLT_CONFIG_DONT_SET_DEFAULT, (Blt_CustomOption *)DECREASING},
     {BLT_CONFIG_SYNONYM, "-descending", "decreasing"},
     {BLT_CONFIG_BACKGROUND, "-disabledbackground", "disabledBackground", 
-        "DisabledBackground", DEF_DISABLEDBACKGROUND, 
+        "DisabledBackground", DEF_DISABLED_BG, 
         Blt_Offset(Scale, disabledBg), BLT_CONFIG_NULL_OK},
     {BLT_CONFIG_COLOR, "-disabledforeground", "disabledForeground",
-        "DisabledForeground", DEF_ACTIVEFOREGROUND,
+        "DisabledForeground", DEF_ACTIVE_FG,
         Blt_Offset(Scale, disabledFgColor), 0}, 
     {BLT_CONFIG_INT, "-divisions", "division", "Divisions", DEF_DIVISIONS,
         Blt_Offset(Scale, reqNumMajorTicks), BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_SYNONYM, "-fg", "color"},
     {BLT_CONFIG_SYNONYM, "-foreground", "color"},
     {BLT_CONFIG_CUSTOM, "-hide", "hide", "Hide", DEF_HIDE, 
-        Blt_Offset(Scale, showFlags), BLT_CONFIG_DONT_SET_DEFAULT, 
+        Blt_Offset(Scale, flags), BLT_CONFIG_DONT_SET_DEFAULT, 
         &hideFlagsOption},
     {BLT_CONFIG_BITMASK, "-labeloffset", "labelOffset", "LabelOffset",
         (char *)NULL, Blt_Offset(Scale, flags), 
         BLT_CONFIG_DONT_SET_DEFAULT, (Blt_CustomOption *)LABELOFFSET},
     {BLT_CONFIG_PIXELS_NNEG, "-ticklinewidth", "tickLineWidth", "TickLineWidth",
-        DEF_TICKLINEWIDTH, Blt_Offset(Scale, tickLineWidth),
+        DEF_TICK_LINEWIDTH, Blt_Offset(Scale, tickLineWidth),
         BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_BITMASK_INVERT, "-loose", "loose", "Loose", DEF_LOOSE, 0, 
         BLT_CONFIG_DONT_SET_DEFAULT, (Blt_CustomOption *)TIGHT},
@@ -666,17 +652,17 @@ static Blt_ConfigSpec configSpecs[] =
         (char *)NULL, Blt_Offset(Scale, major), BLT_CONFIG_NULL_OK,
         &majorTicksOption},
     {BLT_CONFIG_COLOR, "-maxarrowcolor", "maxArrowColor", "MaxArrowColor", 
-        DEF_MAXARROWCOLOR,  Blt_Offset(Scale, maxArrowColor), 0}, 
+        DEF_NORMAL_MAXARROW_COLOR,  Blt_Offset(Scale, normalMaxArrowColor), 0}, 
     {BLT_CONFIG_COLOR, "-minarrowcolor", "minArrowColor", "MinArrowColor", 
-        DEF_MINARROWCOLOR,Blt_Offset(Scale, minArrowColor), 0}, 
+        DEF_NORMAL_MINARROW_COLOR,Blt_Offset(Scale, normalMinArrowColor), 0}, 
     {BLT_CONFIG_DOUBLE, "-max", "max", "Max", DEF_MAX,
         Blt_Offset(Scale, outerRight), BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_DOUBLE, "-min", "min", "Min", DEF_MIN, 
         Blt_Offset(Scale, outerLeft), BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_CUSTOM, "-nom", "nom", "Nom", (char *)NULL, 
         Blt_Offset(Scale, nom), 0, &limitOption},
-    {BLT_CONFIG_OBJ, "-nomvariable", "nomVariable", "NomVariable", (char *)NULL,
-        Blt_Offset(Scale, nomVarObjPtr), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_OBJ, "-variable", "variable", "Variable", (char *)NULL,
+        Blt_Offset(Scale, varNameObjPtr), BLT_CONFIG_NULL_OK},
     {BLT_CONFIG_CUSTOM, "-rangemax", "reqOuterRight", "RangeMax", (char *)NULL, 
         Blt_Offset(Scale, reqInnerRight), 0, &limitOption},
     {BLT_CONFIG_CUSTOM, "-rangemin", "reqInnerLeft", "RangeMin", (char *)NULL, 
@@ -693,20 +679,8 @@ static Blt_ConfigSpec configSpecs[] =
         Blt_Offset(Scale, relief), BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_CUSTOM, "-scale", "scale", "Scale", DEF_SCALE, 0,
         BLT_CONFIG_DONT_SET_DEFAULT, &scaleOption},
-    {BLT_CONFIG_OBJ, "-scrollcommand", "scrollCommand", "ScrollCommand",
-        (char *)NULL, Blt_Offset(Scale, scrollCmdObjPtr),
-        BLT_CONFIG_NULL_OK},
-    {BLT_CONFIG_PIXELS_POS, "-scrollincrement", "scrollIncrement", 
-        "ScrollIncrement", DEF_SCROLL_INCREMENT, 
-        Blt_Offset(Scale, scrollUnits), BLT_CONFIG_DONT_SET_DEFAULT},
-    {BLT_CONFIG_CUSTOM, "-scrollmax", "scrollMax", "ScrollMax", (char *)NULL, 
-        Blt_Offset(Scale, reqScrollMax),  0, &limitOption},
-    {BLT_CONFIG_CUSTOM, "-scrollmin", "scrollMin", "ScrollMin", (char *)NULL, 
-        Blt_Offset(Scale, reqScrollMin), 0, &limitOption},
-    {BLT_CONFIG_DOUBLE, "-shiftby", "shiftBy", "ShiftBy", DEF_SHIFTBY,
-        Blt_Offset(Scale, shiftBy), BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_CUSTOM, "-show", "show", "Show",
-        DEF_SHOW, Blt_Offset(Scale, showFlags),
+        DEF_SHOW, Blt_Offset(Scale, flags),
         BLT_CONFIG_DONT_SET_DEFAULT, &showFlagsOption},
     {BLT_CONFIG_CUSTOM, "-state", "state", "State", DEF_STATE, 
         Blt_Offset(Scale, flags), BLT_CONFIG_DONT_SET_DEFAULT, &stateOption},
@@ -740,20 +714,22 @@ static Blt_ConfigSpec configSpecs[] =
     {BLT_CONFIG_END, NULL, NULL, NULL, NULL, 0, 0}
 };
 
-/* Forward declarations */
-static void DestroyScale(Scale *scalePtr);
-static Tcl_FreeProc FreeScaleProc;
-static void TimeScaleAxis(Axis *scalePtr);
-static Tick FirstMajorTick(Scale *scalePtr);
-static Tick NextMajorTick(Scale *scalePtr);
-static Tick FirstMinorTick(Scale *scalePtr);
-static Tick NextMinorTick(Scale *scalePtr);
+typedef struct {
+    unsigned int flags;
+} IdentifySwitches;
 
-static void
-FreeScaleProc(DestroyData data)
+#define IDENTIFY_ROOT     (1<<0)
+
+static Blt_SwitchSpec identifySwitches[] = 
 {
-    Blt_Free(data);
-}
+    {BLT_SWITCH_BITS_NOARG, "-root", "", (char *)NULL,
+        Blt_Offset(IdentifySwitches, flags), 0, IDENTIFY_ROOT},
+    {BLT_SWITCH_END}
+};
+
+/* Forward declarations */
+static Tcl_IdleProc DisplayProc;
+static Tcl_FreeProc FreeScale;
 
 INLINE static double
 Clamp(double x) 
@@ -762,7 +738,7 @@ Clamp(double x)
 }
 
 static void
-SetScaleRange(AxisRange *rangePtr, double min, double max)
+SetAxisRange(AxisRange *rangePtr, double min, double max)
 {
     rangePtr->min = min;
     rangePtr->max = max;
@@ -806,32 +782,11 @@ InRange(double x, AxisRange *rangePtr)
     }
 }
 
-INLINE static int
-ScaleIsHorizontal(Scale *scalePtr)
+INLINE static TickLabel *
+GetFirstTickLabel(Scale *scalePtr)
 {
-    if (scalePtr->obj.graphPtr->flags & INVERTED) {
-        return (scalePtr->obj.classId == CID_SCALE_Y);
-    } else {
-        return (scalePtr->obj.classId == CID_SCALE_X);
-    }
-    return FALSE;
-}
+    Blt_ChainLink link;
 
-static void
-ReleaseScale(Scale *scalePtr)
-{
-    if (scalePtr != NULL) {
-        scalePtr->refCount--;
-        assert(scalePtr->refCount >= 0);
-        if (scalePtr->refCount == 0) {
-            DestroyScale(scalePtr);
-        }
-    }
-}
-
-static INLINE *TickLabel
-GetFirstTickLabel(scalePtr)
-{
     link = Blt_Chain_FirstLink(scalePtr->chain);
     if (link == NULL) {
         return NULL;
@@ -839,9 +794,11 @@ GetFirstTickLabel(scalePtr)
     return Blt_Chain_GetValue(link);
 }
 
-static INLINE *TickLabel
-GetLastTickLabel(scalePtr)
+INLINE static TickLabel *
+GetLastTickLabel(Scale *scalePtr)
 {
+    Blt_ChainLink link;
+
     link = Blt_Chain_LastLink(scalePtr->chain);
     if (link == NULL) {
         return NULL;
@@ -854,6 +811,112 @@ GetLastTickLabel(scalePtr)
  * Custom option parse and print procedures
  *-----------------------------------------------------------------------------
  */
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * EventuallyRedraw --
+ *
+ *      Queues a request to redraw the widget at the next idle point.
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      Information gets redisplayed.  Right now we don't do selective
+ *      redisplays: the whole window will be redrawn.
+ *
+ *---------------------------------------------------------------------------
+ */
+static void
+EventuallyRedraw(Scale *scalePtr)
+{
+    if ((scalePtr->tkwin != NULL) && !(scalePtr->flags & REDRAW_PENDING)) {
+        scalePtr->flags |= REDRAW_PENDING;
+        Tcl_DoWhenIdle(DisplayProc, scalePtr);
+    }
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * BackgroundChangedProc
+ *
+ *      Stub for image change notifications.  Since we immediately draw the
+ *      image into a pixmap, we don't really care about image changes.
+ *
+ *      It would be better if Tk checked for NULL proc pointers.
+ *
+ * Results:
+ *      None.
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static void
+BackgroundChangedProc(ClientData clientData)
+{
+    Scale *scalePtr = clientData;
+
+    if (scalePtr->tkwin != NULL) {
+        EventuallyRedraw(scalePtr);
+    }
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * TabsetEventProc --
+ *
+ *      This procedure is invoked by the Tk dispatcher for various events on
+ *      tabset widgets.
+ *
+ * Results:
+ *      None.
+ *
+ * Side Effects:
+ *      When the window gets deleted, internal structures get cleaned up.
+ *      When it gets exposed, it is redisplayed.
+ *
+ *---------------------------------------------------------------------------
+ */
+static void
+ScaleEventProc(ClientData clientData, XEvent *eventPtr)
+{
+    Scale *scalePtr = clientData;
+
+    switch (eventPtr->type) {
+    case Expose:
+        if (eventPtr->xexpose.count == 0) {
+            EventuallyRedraw(scalePtr);
+        }
+        break;
+    case ConfigureNotify:
+        EventuallyRedraw(scalePtr);
+        break;
+    case FocusIn:
+    case FocusOut:
+        if (eventPtr->xfocus.detail != NotifyInferior) {
+            if (eventPtr->type == FocusIn) {
+                scalePtr->flags |= FOCUS;
+            } else {
+                scalePtr->flags &= ~FOCUS;
+            }
+            EventuallyRedraw(scalePtr);
+        }
+        break;
+    case DestroyNotify:
+        if (scalePtr->tkwin != NULL) {
+            scalePtr->tkwin = NULL;
+            Tcl_DeleteCommandFromToken(scalePtr->interp, scalePtr->cmdToken);
+        }
+        if (scalePtr->flags & REDRAW_PENDING) {
+            Tcl_CancelIdleCall(DisplayProc, scalePtr);
+        }
+        Tcl_EventuallyFree(scalePtr, FreeScale);
+        break;
+    }
+}
 
 /*
  *---------------------------------------------------------------------------
@@ -933,92 +996,6 @@ ScaleToObj(ClientData clientData, Tcl_Interp *interp, Tk_Window tkwin,
     return objPtr;
 }
 
-/*ARGSUSED*/
-static void
-FreeFormat(ClientData clientData, Display *display, char *widgRec, int offset)
-{
-    Scale *scalePtr = (Scale *)(widgRec);
-
-    if (scalePtr->limitsFmtsObjPtr != NULL) {
-        Tcl_DecrRefCount(scalePtr->limitsFmtsObjPtr);
-        scalePtr->limitsFmtsObjPtr = NULL;
-    }
-}
-
-
-/*
- *---------------------------------------------------------------------------
- *
- * ObjToFormat --
- *
- *      Converts the obj to a format list obj.  Checks if there
- *      are 1 or 2 elements in the list.
- *
- * Results:
- *      The return value is a standard TCL result.  The scale flags are
- *      written into the widget record.
- *
- *---------------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static int
-ObjToFormat(ClientData clientData, Tcl_Interp *interp, Tk_Window tkwin,
-            Tcl_Obj *objPtr, char *widgRec, int offset, int flags)
-{
-    Tcl_Obj **objPtrPtr = (Tcl_Obj **)(widgRec + offset);
-    Tcl_Obj **objv;
-    int objc;
-
-    if (Tcl_ListObjGetElements(interp, objPtr, &objc, &objv) != TCL_OK) {
-        return TCL_ERROR;
-    }
-    if (objc > 2) {
-        Tcl_AppendResult(interp, "too many elements in limits format list \"",
-                Tcl_GetString(objPtr), "\"", (char *)NULL);
-        return TCL_ERROR;
-    }
-    if (objc == 0) {
-        objPtr = NULL;                  /* An empty string is the same as
-                                         * no formats. */
-    } else {
-        Tcl_IncrRefCount(objPtr);
-    }
-    if (*objPtrPtr != NULL) {
-        Tcl_DecrRefCount(*objPtrPtr);
-    }
-    *objPtrPtr = objPtr;
-    return TCL_OK;
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * FormatToObj --
- *
- *      Convert the window coordinates into a string.
- *
- * Results:
- *      The string representing the coordinate position is returned.
- *
- *---------------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static Tcl_Obj *
-FormatToObj(ClientData clientData, Tcl_Interp *interp, Tk_Window tkwin,
-            char *widgRec, int offset, int flags)
-{
-    Scale *scalePtr = (Scale *)(widgRec);
-    Tcl_Obj *objPtr;
-
-    if (scalePtr->limitsFmtsObjPtr == NULL) {
-        objPtr = Tcl_NewStringObj("", -1);
-    } else {
-        Tcl_IncrRefCount(scalePtr->limitsFmtsObjPtr);
-        objPtr = scalePtr->limitsFmtsObjPtr;
-    }
-    return objPtr;
-}
-
 /*
  *---------------------------------------------------------------------------
  *
@@ -1082,17 +1059,12 @@ LimitToObj(ClientData clientData, Tcl_Interp *interp, Tk_Window tkwin,
 static void
 FreeTicks(ClientData clientData, Display *display, char *widgRec, int offset)
 {
-    Scale *scalePtr = (Scale *)widgRec;
-    TickGrid *ptr = (TickGrid *)(widgRec + offset);
-    Ticks *ticksPtr;
-    size_t mask = (size_t)clientData;
+    Ticks *ticksPtr = (Ticks *)(widgRec + offset);
 
-    ticksPtr = &ptr->ticks;
     if (ticksPtr->values != NULL) {
         Blt_Free(ticksPtr->values);
     }
     ticksPtr->values = NULL;
-    scalePtr->flags |= mask;             
 }
 
 /*
@@ -1113,13 +1085,11 @@ ObjToTicks(ClientData clientData, Tcl_Interp *interp, Tk_Window tkwin,
     Scale *scalePtr = (Scale *)widgRec;
     Tcl_Obj **objv;
     int i;
-    TickGrid *ptr = (TickGrid *)(widgRec + offset);
-    Ticks *ticksPtr;
+    Ticks *ticksPtr = (Ticks *)(widgRec + offset);
     double *values;
     int objc;
     size_t mask = (size_t)clientData;
 
-    ticksPtr = &ptr->ticks;
     if (Tcl_ListObjGetElements(interp, objPtr, &objc, &objv) != TCL_OK) {
         return TCL_ERROR;
     }
@@ -1173,11 +1143,9 @@ TicksToObj(ClientData clientData, Tcl_Interp *interp, Tk_Window tkwin,
 {
     Scale *scalePtr = (Scale *)widgRec;
     Tcl_Obj *listObjPtr;
-    Ticks *ticksPtr;
+    Ticks *ticksPtr = (Ticks *)(widgRec + offset);
     size_t mask;
-    TickGrid *ptr = (TickGrid *)(widgRec + offset);
 
-    ticksPtr = &ptr->ticks;
     mask = (size_t)clientData;
     listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **)NULL);
     if ((ticksPtr->values != NULL) && ((scalePtr->flags & mask) == 0)) {
@@ -1272,9 +1240,7 @@ PaletteChangedProc(Blt_Palette palette, ClientData clientData,
 {
     Scale *scalePtr = clientData;
 
-    scalePtr->flags |= MAP_ITEM;
-    scalePtr->obj.graphPtr->flags |= CACHE_DIRTY;
-    Blt_EventuallyRedrawGraph(scalePtr->obj.graphPtr);
+    EventuallyRedraw(scalePtr);
 }
 
 /*ARGSUSED*/
@@ -1383,7 +1349,8 @@ ObjToShowFlags(ClientData clientData, Tcl_Interp *interp, Tk_Window tkwin,
     int *flagsPtr = (int *)(widgRec + offset);
     int objc;
     Tcl_Obj **objv;
-    int showFlag = clientData;
+    int showFlag = (int)(intptr_t)clientData;
+    int i;
 
     if (Tcl_ListObjGetElements(interp, objPtr, &objc, &objv) != TCL_OK) {
         return TCL_ERROR;
@@ -1397,8 +1364,11 @@ ObjToShowFlags(ClientData clientData, Tcl_Interp *interp, Tk_Window tkwin,
         string = Tcl_GetStringFromObj(objPtr, &length);
         c = string[0];
 
-        if ((c == 'a') && (strncmp(string, "all", length) == 0)) {
+        if ((c == 'a') && (length > 1) && 
+            (strncmp(string, "all", length) == 0)) {
             flag = SHOW_ALL;
+        } else if ((c == 'a') && (strncmp(string, "arrows", length) == 0)) {
+            flag = SHOW_MAXARROW | SHOW_MINARROW;
         } else if ((c == 'm') && (length > 3) &&
             (strncmp(string, "minarrow", length) == 0)) {
             flag = SHOW_MINARROW;
@@ -1417,15 +1387,15 @@ ObjToShowFlags(ClientData clientData, Tcl_Interp *interp, Tk_Window tkwin,
             flag = SHOW_GRIP;
         } else if ((c == 't') && ((strncmp(string, "title", length) == 0))) {
             flag = SHOW_TITLE;
-        } else if ((c == 'c') && (strcmp(string, "colorbar", length) == 0)) {
+        } else if ((c == 'c') && (strncmp(string, "colorbar", length) == 0)) {
             flag = SHOW_COLORBAR;
-        } else if ((c == 'c') && (strcmp(string, "current", length) == 0)) {
+        } else if ((c == 'c') && (strncmp(string, "current", length) == 0)) {
             flag = SHOW_CURRENT;
         } else if ((c == 't') && (length > 4) && 
-                   (strcmp(string, "ticks", length) == 0)) {
+                   (strncmp(string, "ticks", length) == 0)) {
             flag = SHOW_TICKS;
         } else if ((c == 't') && (length > 4) && 
-                   (strcmp(string, "ticklabels", length) == 0)) {
+                   (strncmp(string, "ticklabels", length) == 0)) {
             flag = SHOW_TICKLABELS;
         } else {
             Tcl_AppendResult(interp, "bad scale value \"", string, "\": should be"
@@ -1455,8 +1425,8 @@ ObjToShowFlags(ClientData clientData, Tcl_Interp *interp, Tk_Window tkwin,
  */
 /*ARGSUSED*/
 static Tcl_Obj *
-ScaleToObj(ClientData clientData, Tcl_Interp *interp, Tk_Window tkwin,
-           char *widgRec, int offset, int flags)
+ShowFlagsToObj(ClientData clientData, Tcl_Interp *interp, Tk_Window tkwin,
+                char *widgRec, int offset, int flags)
 {
     int showFlags = *(int *)(widgRec + offset);
     Tcl_Obj *listObjPtr, *objPtr;
@@ -1666,7 +1636,7 @@ FreeTickLabels(Blt_Chain chain)
  *
  * Side Effects:
  *      Returns a new label in the string character buffer.  The formatted
- *      tick label will be displayed on the graph.
+ *      tick label will be displayed on the scale.
  *
  * -------------------------------------------------------------------------- 
  */
@@ -1678,57 +1648,54 @@ MakeLabel(Scale *scalePtr, double value)
     const char *string;
     TickLabel *labelPtr;
     Tcl_DString ds;
+    int length;
 
     string = NULL;
     Tcl_DStringInit(&ds);
     if (scalePtr->fmtCmdObjPtr != NULL) {
-        Graph *graphPtr;
-        Tcl_Interp *interp;
         Tcl_Obj *cmdObjPtr, *objPtr;
-        Tk_Window tkwin;
         int result;
 
-        graphPtr = scalePtr->obj.graphPtr;
-        interp = graphPtr->interp;
-        tkwin = graphPtr->tkwin;
         /*
          * A TCL proc was designated to format tick labels. Append the path
          * name of the widget and the default tick label as arguments when
          * invoking it. Copy and save the new label from interp->result.
          */
         cmdObjPtr = Tcl_DuplicateObj(scalePtr->fmtCmdObjPtr);
-        objPtr = Tcl_NewStringObj(Tk_PathName(tkwin), -1);
-        Tcl_ListObjAppendElement(interp, cmdObjPtr, objPtr);
+        objPtr = Tcl_NewStringObj(Tk_PathName(scalePtr->tkwin), -1);
+        Tcl_ListObjAppendElement(scalePtr->interp, cmdObjPtr, objPtr);
         objPtr = Tcl_NewDoubleObj(value);
-        Tcl_ResetResult(interp);
+        Tcl_ResetResult(scalePtr->interp);
         Tcl_IncrRefCount(cmdObjPtr);
-        Tcl_ListObjAppendElement(interp, cmdObjPtr, objPtr);
-        result = Tcl_EvalObjEx(interp, cmdObjPtr, TCL_EVAL_GLOBAL);
+        Tcl_ListObjAppendElement(scalePtr->interp, cmdObjPtr, objPtr);
+        result = Tcl_EvalObjEx(scalePtr->interp, cmdObjPtr, TCL_EVAL_GLOBAL);
         Tcl_DecrRefCount(cmdObjPtr);
         if (result != TCL_OK) {
-            Tcl_BackgroundError(interp);
+            Tcl_BackgroundError(scalePtr->interp);
         } 
-        Tcl_DStringGetResult(interp, &ds);
-        string = Tcl_DStringValue(&ds);
+        string = Tcl_GetStringFromObj(Tcl_GetObjResult(scalePtr->interp), 
+                                      &length);
     } else if (IsLogScale(scalePtr)) {
-        Blt_FmtString(buffer, TICK_LABEL_SIZE, "1E%d", ROUND(value));
+        length = Blt_FmtString(buffer, TICK_LABEL_SIZE, "1E%d", ROUND(value));
         string = buffer;
-    } else if ((IsTimeScale(scalePtr)) && (scalePtr->major.ticks.fmt != NULL)) {
+    } else if ((IsTimeScale(scalePtr)) && (scalePtr->major.fmt != NULL)) {
         Blt_DateTime date;
 
         Blt_SecondsToDate(value, &date);
-        Blt_FormatDate(&date, scalePtr->major.ticks.fmt, &ds);
+        Blt_FormatDate(&date, scalePtr->major.fmt, &ds);
         string = Tcl_DStringValue(&ds);
+        length = Tcl_DStringLength(&ds);
     } else {
         if ((IsTimeScale(scalePtr)) &&
-            (scalePtr->major.ticks.timeUnits == UNITS_SUBSECONDS)) {
+            (scalePtr->major.timeUnits == UNITS_SUBSECONDS)) {
             value = fmod(value, 60.0);
-            value = UROUND(value, scalePtr->major.ticks.step);
+            value = UROUND(value, scalePtr->major.step);
         }
-        Blt_FmtString(buffer, TICK_LABEL_SIZE, "%.*G", NUMDIGITS, value);
+        length = Blt_FmtString(buffer, TICK_LABEL_SIZE, "%.*G", NUMDIGITS, 
+                               value);
         string = buffer;
     }
-    labelPtr = Blt_AssertMalloc(sizeof(TickLabel) + strlen(string));
+    labelPtr = Blt_AssertMalloc(sizeof(TickLabel) + length);
     strcpy(labelPtr->string, string);
     labelPtr->anchorPos.x = labelPtr->anchorPos.y = -1000;
     Tcl_DStringFree(&ds);
@@ -1740,11 +1707,10 @@ MakeLabel(Scale *scalePtr, double value)
  *
  * InvHMap --
  *
- *      Maps the given screen coordinate back to a graph coordinate.  Called
- *      by the graph locater routine.
+ *      Maps the given screen coordinate back to an axis coordinate.  
  *
  * Results:
- *      Returns the graph coordinate value at the given window
+ *      Returns the axis coordinate value at the given window
  *      y-coordinate.
  *
  *---------------------------------------------------------------------------
@@ -1774,11 +1740,11 @@ InvHMap(Scale *scalePtr, double x)
  *
  * InvVMap --
  *
- *      Maps the given screen y-coordinate back to the graph coordinate
- *      value. Called by the graph locater routine.
+ *      Maps the given screen y-coordinate back to the axis coordinate
+ *      value. 
  *
  * Results:
- *      Returns the graph coordinate value for the given screen
+ *      Returns the axis coordinate value for the given screen
  *      coordinate.
  *
  *---------------------------------------------------------------------------
@@ -1808,7 +1774,7 @@ InvVMap(Scale *scalePtr, double y)      /* Screen coordinate */
  *
  * ConvertToScreenX --
  *
- *      Map the given graph value to its axis, returning a screen
+ *      Maps the given scale value to its axis, returning a screen
  *      x-coordinate.
  *
  * Results:
@@ -1833,7 +1799,7 @@ ConvertToScreenX(Scale *scalePtr, double x)
  *
  * ConvertToScreenY --
  *
- *      Map the given graph value to its scale, returning a screen
+ *      Map the given scale value to its scale, returning a screen
  *      y-coordinate.
  *
  * Results:
@@ -1845,7 +1811,7 @@ ConvertToScreenX(Scale *scalePtr, double x)
 static INLINE double
 ConvertToScreenY(Scale *scalePtr, double y)
 {
-    /* Map graph coordinate to normalized coordinates [0..1] */
+    /* Map scale coordinate to normalized coordinates [0..1] */
     y = (y - scalePtr->tickRange.min) * scalePtr->tickRange.scale;
     if (scalePtr->flags & DECREASING) {
         y = 1.0 - y;
@@ -1858,7 +1824,7 @@ ConvertToScreenY(Scale *scalePtr, double y)
  *
  * HMap --
  *
- *      Map the given graph coordinate value to its axis, returning a
+ *      Map the given scale coordinate value to its axis, returning a
  *      window position.  Automatically converts the value to log scale if
  *      the axis is in log scale.
  *
@@ -1886,7 +1852,7 @@ HMap(Scale *scalePtr, double x)
  *
  * VMap --
  *
- *      Map the given graph coordinate value to its axis, returning a
+ *      Map the given scale coordinate value to its axis, returning a
  *      window position. Automatically converts the value to log scale if
  *      the axis is in log scale.
  *
@@ -1907,120 +1873,6 @@ VMap(Scale *scalePtr, double y)
         }
     }
     return ConvertToScreenY(scalePtr, y);
-}
-
-static void
-FixAxisRange(Axis *scalePtr)
-{
-    double min, max;
-
-    /*
-     * When auto-scaling, the axis limits are the bounds of the element data.
-     * If no data exists, set arbitrary limits (wrt to log/linear scale).
-     */
-    min = scalePtr->outerLeft;
-    max = scalePtr->outerRight;
-
-    /* Check the requested axis limits. Can't allow -min to be greater
-     * than -max, or have undefined log scale limits.  */
-    if (((DEFINED(scalePtr->reqMin)) && (DEFINED(scalePtr->reqMax))) &&
-        (scalePtr->reqMin >= scalePtr->reqMax)) {
-        scalePtr->reqMin = scalePtr->reqMax = Blt_NaN();
-    }
-    if (IsLogScale(scalePtr)) {
-        if ((DEFINED(scalePtr->reqMin)) && (scalePtr->reqMin <= 0.0)) {
-            scalePtr->reqMin = Blt_NaN();
-        }
-        if ((DEFINED(scalePtr->reqMax)) && (scalePtr->reqMax <= 0.0)) {
-            scalePtr->reqMax = Blt_NaN();
-        }
-    }
-
-    if (min == DBL_MAX) {
-        if (DEFINED(scalePtr->reqMin)) {
-            min = scalePtr->reqMin;
-        } else {
-            min = (IsLogScale(scalePtr)) ? 0.001 : 0.0;
-        }
-    }
-    if (max == -DBL_MAX) {
-        if (DEFINED(scalePtr->reqMax)) {
-            max = scalePtr->reqMax;
-        } else {
-            max = 1.0;
-        }
-    }
-    if (min > max) {
-        /*
-         * There is no range of data (i.e. min is not less than max), so
-         * manufacture one.
-         */
-        if (min == 0.0) {
-            max = 1.0;
-        } else {
-            max = min + (FABS(min) * 0.1);
-        }
-    } else if (min == max) {
-        /*
-         * There is no range of data (i.e. min is not less than max), so
-         * manufacture one.
-         */
-        max = min + 0.5;
-        min = min - 0.5;
-    }
-
-    /*   
-     * The axis limits are either the current data range or overridden by the
-     * values selected by the user with the -min or -max options.
-     */
-    scalePtr->min = min;
-    scalePtr->max = max;
-    if (DEFINED(scalePtr->reqMin)) {
-        scalePtr->min = scalePtr->reqMin;
-    }
-    if (DEFINED(scalePtr->reqMax)) { 
-        scalePtr->max = scalePtr->reqMax;
-    }
-    if (scalePtr->max < scalePtr->min) {
-        /*   
-         * If the limits still don't make sense, it's because one limit
-         * configuration option (-min or -max) was set and the other default
-         * (based upon the data) is too small or large.  Remedy this by making
-         * up a new min or max from the user-defined limit.
-         */
-        if (!DEFINED(scalePtr->reqMin)) {
-            scalePtr->min = scalePtr->max - (FABS(scalePtr->max) * 0.1);
-        }
-        if (!DEFINED(scalePtr->reqMax)) {
-            scalePtr->max = scalePtr->min + (FABS(scalePtr->max) * 0.1);
-        }
-    }
-    /* 
-     * If a window size is defined, handle auto ranging by shifting the axis
-     * limits.
-     */
-    if ((scalePtr->windowSize > 0.0) && 
-        (!DEFINED(scalePtr->reqMin)) && (!DEFINED(scalePtr->reqMax))) {
-        if (scalePtr->shiftBy < 0.0) {
-            scalePtr->shiftBy = 0.0;
-        }
-        max = scalePtr->min + scalePtr->windowSize;
-        if (scalePtr->max >= max) {
-            if (scalePtr->shiftBy > 0.0) {
-                max = UCEIL(scalePtr->max, scalePtr->shiftBy);
-            }
-            scalePtr->min = max - scalePtr->windowSize;
-        }
-        scalePtr->max = max;
-    }
-    if ((scalePtr->max != scalePtr->prevMax) || 
-        (scalePtr->min != scalePtr->prevMin)) {
-        /* Indicate if the axis limits have changed */
-        scalePtr->flags |= DIRTY;
-        /* and save the previous minimum and maximum values */
-        scalePtr->prevMin = scalePtr->min;
-        scalePtr->prevMax = scalePtr->max;
-    }
 }
 
 /*
@@ -2203,14 +2055,14 @@ LogScaleAxis(Scale *scalePtr)
             numMajor++;
         }
     }
-    scalePtr->major.ticks.axisScale = AXIS_LOGARITHMIC;
-    scalePtr->major.ticks.step = majorStep;
-    scalePtr->major.ticks.initial = floor(tickMin);
-    scalePtr->major.ticks.numSteps = numMajor;
-    scalePtr->minor.ticks.initial = scalePtr->minor.ticks.step = minorStep;
-    scalePtr->major.ticks.range = tickMax - tickMin;
-    scalePtr->minor.ticks.numSteps = numMinor;
-    scalePtr->minor.ticks.axisScale = AXIS_LOGARITHMIC;
+    scalePtr->major.axisScale = AXIS_LOGARITHMIC;
+    scalePtr->major.step = majorStep;
+    scalePtr->major.initial = floor(tickMin);
+    scalePtr->major.numSteps = numMajor;
+    scalePtr->minor.initial = scalePtr->minor.step = minorStep;
+    scalePtr->major.range = tickMax - tickMin;
+    scalePtr->minor.numSteps = numMinor;
+    scalePtr->minor.axisScale = AXIS_LOGARITHMIC;
     SetAxisRange(&scalePtr->tickRange, tickMin, tickMax);
     if (scalePtr->outerLeft > 0.0) {
         scalePtr->tickMin = EXP10(tickMin);
@@ -2309,8 +2161,8 @@ LinearScaleAxis(Scale *scalePtr)
         }
         
         /* Find the outer tick values. Add 0.0 to prevent getting -0.0. */
-        axisMin = tickMin = floor(min / step) * step + 0.0;
-        axisMax = tickMax = ceil(max / step) * step + 0.0;
+        axisMin = tickMin = floor(scalePtr->outerLeft / step) * step + 0.0;
+        axisMax = tickMax = ceil(scalePtr->outerRight / step) * step + 0.0;
         
         numTicks = ROUND((tickMax - tickMin) / step) + 1;
     } 
@@ -2331,10 +2183,10 @@ LinearScaleAxis(Scale *scalePtr)
     scalePtr->tickMin = axisMin;
     scalePtr->tickMax = axisMax;
 
-    scalePtr->major.ticks.step = step;
-    scalePtr->major.ticks.initial = tickMin;
-    scalePtr->major.ticks.numSteps = numTicks;
-    scalePtr->major.ticks.axisScale = AXIS_LINEAR;
+    scalePtr->major.step = step;
+    scalePtr->major.initial = tickMin;
+    scalePtr->major.numSteps = numTicks;
+    scalePtr->major.axisScale = AXIS_LINEAR;
 
     /* Now calculate the minor tick step and number. */
 
@@ -2348,3426 +2200,47 @@ LinearScaleAxis(Scale *scalePtr)
         step = 0.5;
     }
 
-    scalePtr->minor.ticks.step = step;
-    scalePtr->minor.ticks.numSteps = numTicks;
-    scalePtr->minor.ticks.axisScale = AXIS_LINEAR;
+    scalePtr->minor.step = step;
+    scalePtr->minor.numSteps = numTicks;
+    scalePtr->minor.axisScale = AXIS_LINEAR;
     /* Never generate minor ticks. */
 }
 
-/*
- *---------------------------------------------------------------------------
- *
- * Blt_ResetAxes --
- *
- * Results:
- *      None.
- *
- *---------------------------------------------------------------------------
- */
-void
-Blt_ResetAxes(Graph *graphPtr)
+static int 
+GetMajorTimeUnits(double min, double max)
 {
-    Blt_ChainLink link;
-    Blt_HashEntry *hPtr;
-    Blt_HashSearch cursor;
+    double range;
 
-    /* FIXME: This should be called whenever the display list of elements
-     *        change. Maybe yet another flag INIT_STACKS to indicate that
-     *        the element display list has changed.  Needs to be done
-     *        before the axis limits are set.
-     */
-    Blt_InitBarGroups(graphPtr);
-    /*
-     * Step 1:  Reset all axes. Initialize the data limits of the axis to
-     *          impossible values.
-     */
-    for (hPtr = Blt_FirstHashEntry(&graphPtr->axes.nameTable, &cursor);
-        hPtr != NULL; hPtr = Blt_NextHashEntry(&cursor)) {
-        Scale *scalePtr;
-
-        scalePtr = Blt_GetHashValue(hPtr);
-        scalePtr->min = scalePtr->outerLeft = DBL_MAX;
-        scalePtr->max = scalePtr->outerRight = -DBL_MAX;
+    range = max - min;
+    if (range <= 0.0) {
+        return -1;
     }
-
-    /*
-     * Step 2:  For each element that's to be displayed, get the smallest
-     *          and largest data values mapped to each X and Y-axis.  This
-     *          will be the axis limits if the user doesn't override them 
-     *          with -min and -max options.
-     */
-    for (link = Blt_Chain_FirstLink(graphPtr->elements.displayList);
-         link != NULL; link = Blt_Chain_NextLink(link)) {
-        Element *elemPtr;
-
-        elemPtr = Blt_Chain_GetValue(link);
-        if ((graphPtr->flags & MAP_VISIBLE) && (elemPtr->flags & HIDDEN)) {
-            continue;
-        }
-        (*elemPtr->procsPtr->extentsProc) (elemPtr);
-    }
-    /*
-     * Step 3:  Now that we know the range of data values for each axis,
-     *          set axis limits and compute a sweep to generate tick values.
-     */
-    for (hPtr = Blt_FirstHashEntry(&graphPtr->axes.nameTable, &cursor);
-         hPtr != NULL; hPtr = Blt_NextHashEntry(&cursor)) {
-        Scale *scalePtr;
-        double min, max;
-
-        scalePtr = Blt_GetHashValue(hPtr);
-        FixAxisRange(scalePtr);
-
-        /* Calculate min/max tick (major/minor) layouts */
-        min = scalePtr->min;
-        max = scalePtr->max;
-        if ((DEFINED(scalePtr->scrollMin)) && (min < scalePtr->scrollMin)) {
-            min = scalePtr->scrollMin;
-        }
-        if ((DEFINED(scalePtr->scrollMax)) && (max > scalePtr->scrollMax)) {
-            max = scalePtr->scrollMax;
-        }
-        if (IsLogScale(scalePtr)) {
-            LogScaleAxis(scalePtr);
-        } else if (IsTimeScale(scalePtr)) {
-            TimeScaleAxis(scalePtr);
-        } else {
-            LinearScaleAxis(scalePtr);
-        }
-        if ((scalePtr->marginPtr != NULL) && (scalePtr->flags & DIRTY)) {
-            graphPtr->flags |= CACHE_DIRTY;
-        }
-    }
-
-    graphPtr->flags &= ~RESET_AXES;
-    
-    /*
-     * When any axis changes, we need to layout the entire graph.
-     */
-    graphPtr->flags |= (GET_AXIS_GEOMETRY | LAYOUT_NEEDED | 
-                        MAP_ALL | REDRAW_WORLD);
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * ResetTextStyles --
- *
- *      Configures axis attributes (font, line width, label, etc) and
- *      allocates a new (possibly shared) graphics context.  Line cap style
- *      is projecting.  This is for the problem of when a tick sits
- *      directly at the end point of the axis.
- *
- * Results:
- *      The return value is a standard TCL result.
- *
- * Side Effects:
- *      Axis resources are allocated (GC, font). Axis layout is deferred
- *      until the height and width of the window are known.
- *
- *---------------------------------------------------------------------------
- */
-static void
-ResetTextStyles(Scale *scalePtr)
-{
-    GC newGC;
-    XGCValues gcValues;
-    unsigned long gcMask;
-    
-    gcMask = (GCForeground | GCLineWidth | GCCapStyle);
-    gcValues.foreground = scalePtr->tickColor->pixel;
-    gcValues.font = Blt_Font_Id(scalePtr->tickFont);
-    gcValues.line_width = LineWidth(scalePtr->tickLineWidth);
-    gcValues.cap_style = CapProjecting;
-
-    newGC = Tk_GetGC(scalePtr->tkwin, gcMask, &gcValues);
-    if (scalePtr->tickGC != NULL) {
-        Tk_FreeGC(scalePtr->display, scalePtr->tickGC);
-    }
-    scalePtr->tickGC = newGC;
-
-    /* Assuming settings from above GC */
-    gcValues.foreground = scalePtr->activeFgColor->pixel;
-    newGC = Tk_GetGC(scalePtr->tkwin, gcMask, &gcValues);
-    if (scalePtr->activeTickGC != NULL) {
-        Tk_FreeGC(scalePtr->display, scalePtr->activeTickGC);
-    }
-    scalePtr->activeTickGC = newGC;
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * DestroyScale --
- *
- * Results:
- *      None.
- *
- * Side effects:
- *      Resources (font, color, gc, labels, etc.) associated with the scale
- *      are deallocated.
- *
- *---------------------------------------------------------------------------
- */
-static void
-DestroyScale(Scale *scalePtr)
-{
-    Blt_FreeOptions(configSpecs, (char *)scalePtr, scalePtr->display, 0);
-    if (scalePtr->bindTable != NULL) {
-        Blt_DeleteBindings(scalePtr->bindTable, scalePtr);
-    }
-
-    Blt_Ts_FreeStyle(scalePtr->display, &scalePtr->limitsTextStyle);
-
-    if (scalePtr->tickGC != NULL) {
-        Tk_FreeGC(scalePtr->display, scalePtr->tickGC);
-    }
-    if (scalePtr->activeTickGC != NULL) {
-        Tk_FreeGC(scalePtr->display, scalePtr->activeTickGC);
-    }
-    if (scalePtr->disabledTickGC != NULL) {
-        Tk_FreeGC(scalePtr->display, scalePtr->disabledTickGC);
-    }
-    FreeTickLabels(scalePtr->tickLabels);
-    Blt_Chain_Destroy(scalePtr->tickLabels);
-    if (scalePtr->tickSegments != NULL) {
-        Blt_Free(scalePtr->tickSegments);
-    }
-    Blt_Free(scalePtr);
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * AxisOffsets --
- *
- *      Determines the sides of the axis, major and minor ticks, and title
- *      of the axis.
- *
- * Results:
- *      None.
- *
- *---------------------------------------------------------------------------
- */
-static void
-AxisOffsets(Axis *scalePtr, AxisInfo *infoPtr)
-{
-    Graph *graphPtr = scalePtr->obj.graphPtr;
-    int pad;                            /* Offset of axis from interior
-                                         * region. This includes a possible
-                                         * border and the axis line
-                                         * width. */
-    int axisLine;
-    int t1, t2, labelOffset;
-    int tickLabel, axisPad;
-    int inset, mark;
-    int x, y;
-    float fangle;
-
-    scalePtr->titleAngle = 0;
-    tickLabel = axisLine = t1 = t2 = 0;
-    labelOffset = AXIS_PAD_TITLE;
-    if (scalePtr->tickLineWidth > 0) {
-        if (scalePtr->flags & TICKLABELS) {
-            t1 = scalePtr->tickLength;
-            t2 = (t1 * 10) / 15;
-        }
-        labelOffset = t1 + AXIS_PAD_TITLE;
-        if (scalePtr->flags & EXTERIOR) {
-            labelOffset += scalePtr->tickLineWidth;
-        }
-    }
-    axisPad = 0;
-    /* Adjust offset for the interior border width and the line width */
-    pad = 1;
-    pad = 0;                            /* FIXME: test */
-    /*
-     * Pre-calculate the x-coordinate positions of the axis, tick labels,
-     * and the individual major and minor ticks.
-     */
-    inset = pad + scalePtr->tickLineWidth / 2;
-    switch (scalePtr->side) {
-    case SIDE_TOP:
-        axisLine = graphPtr->y1 - scalePtr->marginPtr->nextLayerOffset;
-        if (scalePtr->colorbar.thickness > 0) {
-            axisLine -= scalePtr->colorbar.thickness + COLORBAR_PAD;
-        }
-        if (scalePtr->flags & EXTERIOR) {
-            axisLine -= axisPad + scalePtr->tickLineWidth / 2;
-            tickLabel = axisLine - 2;
-            if (scalePtr->tickLineWidth > 0) {
-                tickLabel -= scalePtr->tickLength;
-            }
-        } else {
-            axisLine -= axisPad + scalePtr->tickLineWidth / 2;
-            tickLabel = graphPtr->y1 + 2;
-        }
-        mark = graphPtr->y1 - pad;
-        scalePtr->tickAnchor = TK_ANCHOR_S;
-        scalePtr->left = scalePtr->screenMin - inset - 2;
-        scalePtr->right = scalePtr->screenMin + scalePtr->screenRange +
-            inset - 1;
-        if (graphPtr->flags & STACK_AXES) {
-            scalePtr->top = mark;
-        } else {
-            scalePtr->top = mark - scalePtr->height;
-        }
-        scalePtr->bottom = mark;
-        x = (scalePtr->right + scalePtr->left) / 2;
-        if (graphPtr->flags & STACK_AXES) {
-            y = mark - AXIS_PAD_TITLE;
-        } else {
-            y = mark - scalePtr->height + AXIS_PAD_TITLE;
-        }
-        scalePtr->titleAnchor = TK_ANCHOR_N;
-        scalePtr->titlePos.x = x;
-        scalePtr->titlePos.y = y;
-        infoPtr->colorbar = axisLine - scalePtr->colorbar.thickness;
-        break;
-
-    case SIDE_BOTTOM:
-        /*
-         *  ----------- bottom + plot borderwidth
-         *      mark --------------------------------------------
-         *          ===================== axisLine (linewidth)
-         *                   tick
-         *                  title
-         *
-         *          ===================== axisLine (linewidth)
-         *  ----------- bottom + plot borderwidth
-         *      mark --------------------------------------------
-         *                   tick
-         *                  title
-         */
-        axisLine = graphPtr->y2 + scalePtr->marginPtr->nextLayerOffset;
-        if (scalePtr->colorbar.thickness > 0) {
-            axisLine += scalePtr->colorbar.thickness + COLORBAR_PAD;
-        }
-        if (scalePtr->flags & EXTERIOR) {
-            axisLine += graphPtr->plotBorderWidth + axisPad +
-                scalePtr->tickLineWidth / 2;
-            if (graphPtr->plotRelief == TK_RELIEF_SOLID) {
-                axisLine--;
-            } else {
-                axisLine += 2;
-            }
-            tickLabel = axisLine + 2;
-            if (scalePtr->tickLineWidth > 0) {
-                tickLabel += scalePtr->tickLength;
-            }
-        } else {
-            axisLine -= axisPad + scalePtr->tickLineWidth / 2;
-            tickLabel = graphPtr->y2 +  graphPtr->plotBorderWidth + 2;
-            if (graphPtr->plotRelief != TK_RELIEF_SOLID) {
-                axisLine--;
-            }
-        }
-        fangle = FMOD(scalePtr->tickAngle, 90.0f);
-        if (fangle == 0.0) {
-            scalePtr->tickAnchor = TK_ANCHOR_N;
-        } else {
-            int quadrant;
-
-            quadrant = (int)(scalePtr->tickAngle / 90.0);
-            if ((quadrant == 0) || (quadrant == 2)) {
-                scalePtr->tickAnchor = TK_ANCHOR_NE;
-            } else {
-                scalePtr->tickAnchor = TK_ANCHOR_NW;
-            }
-        }
-        scalePtr->left = scalePtr->screenMin - inset - 2;
-        scalePtr->right = scalePtr->screenMin + scalePtr->screenRange + inset - 1;
-        scalePtr->top = graphPtr->y2 + labelOffset - t1;
-        mark = graphPtr->y2 + graphPtr->plotBorderWidth +
-            scalePtr->marginPtr->nextLayerOffset;
-        if (graphPtr->flags & STACK_AXES) {
-            scalePtr->bottom = mark + scalePtr->marginPtr->axesOffset - 1;
-        } else {
-            scalePtr->bottom = mark + scalePtr->height - 1;
-        }
-        if (scalePtr->titleAlternate) {
-            x = graphPtr->x2 + AXIS_PAD_TITLE;
-            y = mark + (scalePtr->height / 2);
-            scalePtr->titleAnchor = TK_ANCHOR_W; 
-        } else {
-            x = (scalePtr->right + scalePtr->left) / 2;
-            if (graphPtr->flags & STACK_AXES) {
-                y = mark + scalePtr->marginPtr->axesOffset - AXIS_PAD_TITLE;
-            } else {
-                y = mark + scalePtr->height - AXIS_PAD_TITLE;
-            }
-            scalePtr->titleAnchor = TK_ANCHOR_S; 
-        }
-        scalePtr->titlePos.x = x;
-        scalePtr->titlePos.y = y;
-        infoPtr->colorbar = axisLine - scalePtr->colorbar.thickness;
-        break;
-
-    case MARGIN_LEFT:
-        /*
-         *                    mark
-         *                  |  : 
-         *                  |  :      
-         *                  |  : 
-         *                  |  :
-         *                  |  : 
-         *     axisLine
-         */
-        /* 
-         * Exterior axis 
-         *     + plotarea right
-         *     |A|B|C|D|E|F|G|H
-         *           |right
-         * A = plot pad 
-         * B = plot border width
-         * C = axis pad
-         * D = axis line
-         * E = tick length
-         * F = tick label 
-         * G = graph border width
-         * H = highlight thickness
-         */
-        /* 
-         * Interior axis 
-         *     + plotarea right
-         *     |A|B|C|D|E|F|G|H
-         *           |right
-         * A = plot pad 
-         * B = tick length
-         * C = axis line width
-         * D = axis pad
-         * E = plot border width
-         * F = tick label 
-         * G = graph border width
-         * H = highlight thickness
-         */
-        axisLine = graphPtr->x1 - scalePtr->marginPtr->nextLayerOffset;
-        if (scalePtr->colorbar.thickness > 0) {
-            axisLine -= scalePtr->colorbar.thickness + COLORBAR_PAD;
-        }
-        if (scalePtr->flags & EXTERIOR) {
-            axisLine -= graphPtr->plotBorderWidth + axisPad +
-                scalePtr->tickLineWidth / 2;
-            if (graphPtr->plotRelief == TK_RELIEF_SOLID) {
-#ifdef notdef
-                axisLine++;
-#endif
-            } else {
-                axisLine -= 3;
-            }
-            tickLabel = axisLine - 2;
-            if (scalePtr->tickLineWidth > 0) {
-                tickLabel -= scalePtr->tickLength;
-            }
-        } else {
-            if (graphPtr->plotRelief == TK_RELIEF_SOLID) {
-                axisLine--;
-            }
-            axisLine += axisPad + scalePtr->tickLineWidth / 2;
-            tickLabel = graphPtr->x1 - graphPtr->plotBorderWidth - 2;
-        }
-        scalePtr->tickAnchor = TK_ANCHOR_E;
-        mark = graphPtr->x1 - graphPtr->plotBorderWidth -
-            scalePtr->marginPtr->nextLayerOffset;
-        if (graphPtr->flags & STACK_AXES) {
-            scalePtr->left = mark - scalePtr->marginPtr->axesOffset;
-        } else {
-            scalePtr->left = mark - scalePtr->width;
-        }
-        scalePtr->right = mark - 3;
-        scalePtr->top = scalePtr->screenMin - inset - 2;
-        scalePtr->bottom = scalePtr->screenMin + scalePtr->screenRange + inset - 1;
-        if (scalePtr->titleAlternate) {
-            x = mark - (scalePtr->width / 2);
-            y = graphPtr->y1 - AXIS_PAD_TITLE;
-            scalePtr->titleAnchor = TK_ANCHOR_SW; 
-        } else {
-            if (graphPtr->flags & STACK_AXES) {
-                x = mark - scalePtr->marginPtr->axesOffset;
-            } else {
-                x = mark - scalePtr->width + AXIS_PAD_TITLE;
-            }
-            y = (scalePtr->bottom + scalePtr->top) / 2;
-            scalePtr->titleAnchor = TK_ANCHOR_W; 
-        } 
-        scalePtr->titlePos.x = x;
-        scalePtr->titlePos.y = y;
-        infoPtr->colorbar = axisLine;
-        break;
-
-    case MARGIN_RIGHT:
-        axisLine = graphPtr->x2 + scalePtr->marginPtr->nextLayerOffset;
-        if (scalePtr->colorbar.thickness > 0) {
-            axisLine += scalePtr->colorbar.thickness + COLORBAR_PAD;
-        }
-        if (scalePtr->flags & EXTERIOR) {
-            axisLine += graphPtr->plotBorderWidth + axisPad + scalePtr->tickLineWidth / 2;
-            tickLabel = axisLine + 2;
-            if (scalePtr->tickLineWidth > 0) {
-                tickLabel += scalePtr->tickLength;
-            }
-            if (graphPtr->plotRelief == TK_RELIEF_SOLID) {
-                axisLine--;
-            } else {
-                axisLine++;
-            }
-        } else {
-            if (graphPtr->plotRelief == TK_RELIEF_SOLID) {
-
-#ifdef notdef
-                axisLine--;                 /* Draw axis line within solid
-                                             * plot border. */
-#endif
-            } 
-            axisLine -= axisPad + scalePtr->tickLineWidth / 2;
-            tickLabel = axisLine + 2;
-        }
-        mark = graphPtr->x2 + scalePtr->marginPtr->nextLayerOffset + pad;
-        scalePtr->tickAnchor = TK_ANCHOR_W;
-        scalePtr->left = mark;
-        if (graphPtr->flags & STACK_AXES) {
-            scalePtr->right = mark + scalePtr->marginPtr->axesOffset - 1;
-        } else {
-            scalePtr->right = mark + scalePtr->width - 1;
-        }
-        scalePtr->top = scalePtr->screenMin - inset - 2;
-        scalePtr->bottom = scalePtr->screenMin + scalePtr->screenRange + inset-1;
-        if (scalePtr->titleAlternate) {
-            x = mark + (scalePtr->width / 2);
-            y = graphPtr->y1 - AXIS_PAD_TITLE;
-            scalePtr->titleAnchor = TK_ANCHOR_SE; 
-        } else {
-            if (graphPtr->flags & STACK_AXES) {
-                x = mark + scalePtr->marginPtr->axesOffset - AXIS_PAD_TITLE;
-            } else {
-                x = mark + scalePtr->width - AXIS_PAD_TITLE;
-            }
-            y = (scalePtr->bottom + scalePtr->top) / 2;
-            scalePtr->titleAnchor = TK_ANCHOR_E;
-        }
-        scalePtr->titlePos.x = x;
-        scalePtr->titlePos.y = y;
-        infoPtr->colorbar = axisLine - scalePtr->colorbar.thickness;
-        break;
-
-    case MARGIN_NONE:
-        axisLine = 0;
-        break;
-    }
-    if ((scalePtr->side == MARGIN_LEFT) ||
-        (scalePtr->side == MARGIN_TOP)) {
-        t1 = -t1, t2 = -t2;
-        labelOffset = -labelOffset;
-    }
-    infoPtr->axisLength = axisLine;
-    infoPtr->t1 = axisLine + t1;
-    infoPtr->t2 = axisLine + t2;
-    if (tickLabel > 0) {
-        infoPtr->label = tickLabel;
-    } else {
-        infoPtr->label = axisLine + labelOffset;
-    }
-    if ((scalePtr->flags & EXTERIOR) == 0) {
-        /*infoPtr->label = axisLine + labelOffset - t1; */
-        infoPtr->t1 = axisLine - t1;
-        infoPtr->t2 = axisLine - t2;
+    if (range > (SECONDS_YEAR * 1.5)) {
+        return UNITS_YEARS;
     } 
-}
-
-static void
-MakeColorbar(Scale *scalePtr, AxisInfo *infoPtr)
-{
-    double min, max;
-
-    min = scalePtr->tickMin;
-    max = scalePtr->tickMax;
-    if (HORIZONTAL(scalePtr)) {
-        int x1, x2;
-
-        x2 = HMap(scalePtr, min);
-        x1 = HMap(scalePtr, max);
-        scalePtr->colorbar.rect.x = MIN(x1, x2);
-        scalePtr->colorbar.rect.y = infoPtr->colorbar;
-        scalePtr->colorbar.rect.width = ABS(x1 - x2) + 1;
-        scalePtr->colorbar.rect.height = scalePtr->colorbar.thickness;
-    } else {
-        int y1, y2;
-
-        y2 = VMap(scalePtr, min);
-        y1 = VMap(scalePtr, max);
-        scalePtr->colorbar.rect.x = infoPtr->colorbar;
-        scalePtr->colorbar.rect.y = MIN(y1,y2);
-        scalePtr->colorbar.rect.height = ABS(y1 - y2) + 1;
-        scalePtr->colorbar.rect.width = scalePtr->colorbar.thickness;
-    }
-}
-
-static void
-MakeAxisLine(Scale *scalePtr, int line, Segment2d *s)
-{
-    double min, max;
-
-    min = scalePtr->tickMin;
-    max = scalePtr->tickMax;
-    if (HORIZONTAL(scalePtr)) {
-        segPtr->p.x = HMap(scalePtr, min);
-        segPtr->q.x = HMap(scalePtr, max);
-        segPtr->p.y = segPtr->q.y = line;
-    } else {
-        segPtr->q.x = segPtr->p.x = line;
-        segPtr->p.y = VMap(scalePtr, min);
-        segPtr->q.y = VMap(scalePtr, max);
-    }
-}
-
-
-/* 
- * If the axis is in log scale, the value is also in log scale.  we must
- * convert it back to linear, because the HMap and VMap routines
- * will convert it back to log before computing a scene value.
- */
-static void
-MakeTick(Axis *scalePtr, double value, int tick, int line, Segment2d *s)
-{
-    if (HORIZONTAL(scalePtr)) {
-        segPtr->p.x = segPtr->q.x = ConvertToScreenX(scalePtr, value);
-        segPtr->p.y = line;
-        segPtr->q.y = tick;
-    } else {
-        segPtr->p.x = line;
-        segPtr->p.y = segPtr->q.y = ConvertToScreenY(scalePtr, value);
-        segPtr->q.x = tick;
-    }
-}
-
-static void
-MakeSegments(Axis *scalePtr, AxisInfo *infoPtr)
-{
-    int arraySize;
-    int numMajorTicks, numMinorTicks;
-    Segment2d *segments;
-    Segment2d *s;
-
-    if (scalePtr->segments != NULL) {
-        Blt_Free(scalePtr->segments);
-    }
-    numMajorTicks = scalePtr->major.ticks.numSteps;
-    numMinorTicks = scalePtr->minor.ticks.numSteps;
-    arraySize = 1 + numMajorTicks + (numMajorTicks * (numMinorTicks + 1));
-    segments = Blt_AssertMalloc(arraySize * sizeof(Segment2d));
-    s = segments;
-    if (scalePtr->tickLineWidth > 0) {
-        /* Axis baseline */
-        MakeAxisLine(scalePtr, infoPtr->axisLength, s);
-        s++;
-    }
-    if (scalePtr->flags & TICKLABELS) {
-        Blt_ChainLink link;
-        double labelPos;
-        Tick left, right;
-
-        link = Blt_Chain_FirstLink(scalePtr->tickLabels);
-        labelPos = (double)infoPtr->label;
-        for (left = FirstMajorTick(scalePtr); left.isValid; left = right) {
-            right = NextMajorTick(scalePtr);
-            if (right.isValid) {
-                Tick minor;
-
-                /* If this isn't the last major tick, add minor ticks. */
-                scalePtr->minor.ticks.range = right.value - left.value;
-                scalePtr->minor.ticks.initial = left.value;
-                for (minor = FirstMinorTick(scalePtr); minor.isValid; 
-                     minor = NextMinorTick(scalePtr)) {
-                    if (InRange(minor.value, &scalePtr->tickRange)) {
-                        /* Add minor tick. */
-                        MakeTick(scalePtr, minor.value, infoPtr->t2, 
-                                infoPtr->axisLength, s);
-                        s++;
-                    }
-                }        
-            }
-            if (InRange(left.value, &scalePtr->tickRange)) {
-                double mid;
-
-                /* Add major tick. This could be the last major tick. */
-                MakeTick(scalePtr, left.value, infoPtr->t1,
-                        infoPtr->axisLength, s);
-                mid = left.value;
-                if ((scalePtr->flags & LABELOFFSET) && (right.isValid)) {
-                    mid = (right.value - left.value) * 0.5;
-                }
-                if (InRange(mid, &scalePtr->tickRange)) {
-                    TickLabel *labelPtr;
-
-                    labelPtr = Blt_Chain_GetValue(link);
-                    link = Blt_Chain_NextLink(link);
-                    
-                    /* Set the position of the tick label. */
-                    if (HORIZONTAL(scalePtr)) {
-                        labelPtr->anchorPos.x = segPtr->p.x;
-                        labelPtr->anchorPos.y = labelPos;
-                    } else {
-                        labelPtr->anchorPos.x = labelPos;
-                        labelPtr->anchorPos.y = segPtr->p.y;
-                    }
-                }
-                s++;
-            }
-        }
-    }
-    scalePtr->segments = segments;
-    scalePtr->numSegments = s - segments;
-#ifdef notdef
-    fprintf(stderr,
-            "axis=%s numSegments=%d, arraySize=%d numMajor=%d numMinor=%d\n",
-            scalePtr->obj.name, scalePtr->numSegments, arraySize,
-            numMajorTicks, numMinorTicks);
-#endif
-    assert(scalePtr->numSegments <= arraySize);
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * MapAxis --
- *
- *      Pre-calculates positions of the axis, ticks, and labels (to be used
- *      later when displaying the axis).  Calculates the values for each
- *      major and minor tick and checks to see if they are in range (the
- *      outer ticks may be outside of the range of plotted values).
- *
- *      Line segments for the minor and major ticks are saved into one
- *      XSegment array so that they can be drawn by a single XDrawSegments
- *      call. The positions of the tick labels are also computed and saved.
- *
- * Results:
- *      None.
- *
- * Side Effects:
- *      Line segments and tick labels are saved and used later to draw the
- *      axis.
- *
- *---------------------------------------------------------------------------
- */
-static void
-MapAxis(Axis *scalePtr)
-{
-    AxisInfo info;
-    
-    AxisOffsets(scalePtr, &info);
-    MakeSegments(scalePtr, &info);
-    if (scalePtr->colorbar.thickness > 0) {
-        MakeColorbar(scalePtr, &info);
-    }
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * AdjustViewport --
- *
- *      Adjusts the offsets of the viewport according to the scroll mode.
- *      This is to accommodate both "listbox" and "canvas" style scrolling.
- *
- *      "canvas"        The viewport scrolls within the range of world
- *                      coordinates.  This way the viewport always displays
- *                      a full page of the world.  If the world is smaller
- *                      than the viewport, then (bizarrely) the world and
- *                      viewport are inverted so that the world moves up
- *                      and down within the viewport.
- *
- *      "listbox"       The viewport can scroll beyond the range of world
- *                      coordinates.  Every entry can be displayed at the
- *                      top of the viewport.  This also means that the
- *                      scrollbar thumb weirdly shrinks as the last entry
- *                      is scrolled upward.
- *
- * Results:
- *      The corrected offset is returned.
- *
- *---------------------------------------------------------------------------
- */
-static double
-AdjustViewport(double offset, double windowSize)
-{
-    /*
-     * Canvas-style scrolling allows the world to be scrolled within the
-     * window.
-     */
-    if (windowSize > 1.0) {
-        if (windowSize < (1.0 - offset)) {
-            offset = 1.0 - windowSize;
-        }
-        if (offset > 0.0) {
-            offset = 0.0;
-        }
-    } else {
-        if ((offset + windowSize) > 1.0) {
-            offset = 1.0 - windowSize;
-        }
-        if (offset < 0.0) {
-            offset = 0.0;
-        }
-    }
-    return offset;
-}
-
-static int
-GetAxisScrollInfo(Tcl_Interp *interp, int objc, Tcl_Obj *const *objv,
-                  double *offsetPtr, double windowSize, double scrollUnits,
-                  double scale)
-{
-    const char *string;
-    char c;
-    double offset;
-    int length;
-
-    offset = *offsetPtr;
-    string = Tcl_GetStringFromObj(objv[0], &length);
-    c = string[0];
-    scrollUnits *= scale;
-    if ((c == 's') && (strncmp(string, "scroll", length) == 0)) {
-        int count;
-        double fract;
-
-        assert(objc == 3);
-        /* Scroll number unit/page */
-        if (Tcl_GetIntFromObj(interp, objv[1], &count) != TCL_OK) {
-            return TCL_ERROR;
-        }
-        string = Tcl_GetStringFromObj(objv[2], &length);
-        c = string[0];
-        if ((c == 'u') && (strncmp(string, "units", length) == 0)) {
-            fract = count * scrollUnits;
-        } else if ((c == 'p') && (strncmp(string, "pages", length) == 0)) {
-            /* A page is 90% of the view-able window. */
-            fract = (int)(count * windowSize * 0.9 + 0.5);
-        } else if ((c == 'p') && (strncmp(string, "pixels", length) == 0)) {
-            fract = count * scale;
-        } else {
-            Tcl_AppendResult(interp, "unknown \"scroll\" units \"", string,
-                "\"", (char *)NULL);
-            return TCL_ERROR;
-        }
-        offset += fract;
-    } else if ((c == 'm') && (strncmp(string, "moveto", length) == 0)) {
-        double fract;
-
-        assert(objc == 2);
-        /* moveto fraction */
-        if (Tcl_GetDoubleFromObj(interp, objv[1], &fract) != TCL_OK) {
-            return TCL_ERROR;
-        }
-        offset = fract;
-    } else {
-        int count;
-        double fract;
-
-        /* Treat like "scroll units" */
-        if (Tcl_GetIntFromObj(interp, objv[0], &count) != TCL_OK) {
-            return TCL_ERROR;
-        }
-        fract = (double)count * scrollUnits;
-        offset += fract;
-        /* CHECK THIS: return TCL_OK; */
-    }
-    *offsetPtr = AdjustViewport(offset, windowSize);
-    return TCL_OK;
-}
-
-static int
-GradientCalcProc(ClientData clientData, int x, int y, double *valuePtr)
-{
-    Axis *scalePtr = clientData;
-    double t;
-
-    if (HORIZONTAL(scalePtr)) {
-        t = (double)(x - scalePtr->screenMin) * scalePtr->screenScale;
-    } else {
-        t = (double)(y - scalePtr->screenMin) * scalePtr->screenScale;
-    } else {
-        return TCL_ERROR;
-    }
-    *valuePtr = t;
-    return TCL_OK;
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * ColorbarToPicture --
- *
- * Results:
- *      None.
- *
- *---------------------------------------------------------------------------
- */
-static Blt_Picture
-ColorbarToPicture(Axis *scalePtr, int w, int h)
-{
-    Graph *graphPtr;
-    Blt_Picture picture;
-
-    if (scalePtr->palette == NULL) {
-        return NULL;                    /* No palette defined. */
-    }
-    graphPtr = scalePtr->obj.graphPtr;
-    picture = Blt_CreatePicture(w, h);
-    if (picture != NULL) {
-        Blt_PaintBrush brush;
-
-        Blt_BlankPicture(picture, Blt_Bg_GetColor(graphPtr->normalBg));
-        brush = Blt_NewLinearGradientBrush();
-        Blt_SetLinearGradientBrushPalette(brush, scalePtr->palette);
-        Blt_SetLinearGradientBrushCalcProc(brush, GradientCalcProc, scalePtr);
-        Blt_PaintRectangle(picture, 0, 0, w, h, 0, 0, brush, TRUE);
-        Blt_FreeBrush(brush);
-        return picture;
-    }
-    return NULL;
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * DrawColorbar --
- *
- * Results:
- *      None.
- *
- *---------------------------------------------------------------------------
- */
-static void
-DrawColorbar(Axis *scalePtr, Drawable drawable)
-{
-    Blt_Painter painter;
-    Blt_Picture picture;
-    Graph *graphPtr;
-    XRectangle *rectPtr;
-
-    if (scalePtr->palette == NULL) {
-        return;                         /* No palette defined. */
-    }
-    graphPtr = scalePtr->obj.graphPtr;
-    rectPtr = &scalePtr->colorbar.rect;
-    picture = ColorbarToPicture(scalePtr, rectPtr->width, rectPtr->height);
-    if (picture == NULL) {
-        return;                         /* Background is obscured. */
-    }
-    painter = Blt_GetPainter(graphPtr->tkwin, 1.0);
-    Blt_PaintPicture(painter, drawable, picture, 0, 0, rectPtr->width, 
-                     rectPtr->height, rectPtr->x, rectPtr->y, 0);
-    Blt_FreePicture(picture);
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * DrawAxis --
- *
- *      Draws the axis, ticks, and labels onto the canvas.
- *
- *      Initializes and passes text attribute information through TextStyle
- *      structure.
- *
- * Results:
- *      None.
- *
- *---------------------------------------------------------------------------
- */
-static void
-DrawAxis(Scale *scalePtr, Drawable drawable)
-{
-#ifdef notdef
-    fprintf(stderr, "scale=%s scale=%d tmin=%g tmax=%g vmin=%g vmax=%g\n",
-            scalePtr->obj.name, scalePtr->scale, scalePtr->tickRange.min,
-            scalePtr->tickRange.max, scalePtr->outerLeft,
-            scalePtr->outerRight);
-#endif
-    if (scalePtr->normalBg != NULL) {
-        Blt_Bg_FillRectangle(graphPtr->tkwin, drawable, 
-                scalePtr->normalBg, 
-                scalePtr->left, scalePtr->top, 
-                scalePtr->right - scalePtr->left, 
-                scalePtr->bottom - scalePtr->top, scalePtr->borderWidth, 
-                scalePtr->relief);
-    }
-    if (scalePtr->colorbar.thickness > 0) {
-        DrawColorbar(scalePtr, drawable);
-    }
-    if (scalePtr->title != NULL) {
-        TextStyle ts;
-
-        Blt_Ts_InitStyle(ts);
-        Blt_Ts_SetAngle(ts, scalePtr->titleAngle);
-        Blt_Ts_SetFont(ts, scalePtr->titleFont);
-        Blt_Ts_SetPadding(ts, 1, 2, 0, 0);
-        Blt_Ts_SetAnchor(ts, scalePtr->titleAnchor);
-        Blt_Ts_SetJustify(ts, scalePtr->titleJustify);
-        if (scalePtr->flags & ACTIVE) {
-            Blt_Ts_SetForeground(ts, scalePtr->activeFgColor);
-        } else {
-            Blt_Ts_SetForeground(ts, scalePtr->titleColor);
-        }
-        Blt_Ts_SetForeground(ts, scalePtr->titleColor);
-        if ((scalePtr->titleAngle == 90.0) || (scalePtr->titleAngle == 270.0)) {
-            Blt_Ts_SetMaxLength(ts, scalePtr->height);
-        } else {
-            Blt_Ts_SetMaxLength(ts, scalePtr->width);
-        }
-        Blt_Ts_DrawText(graphPtr->tkwin, drawable, scalePtr->title, -1, &ts, 
-                (int)scalePtr->titlePos.x, (int)scalePtr->titlePos.y);
-    }
-    if (scalePtr->scrollCmdObjPtr != NULL) {
-        double viewWidth, viewMin, viewMax;
-        double worldWidth, worldMin, worldMax;
-        double fract;
-        int isHoriz;
-
-        worldMin = scalePtr->outerLeft;
-        worldMax = scalePtr->outerRight;
-        if (DEFINED(scalePtr->scrollMin)) {
-            worldMin = scalePtr->scrollMin;
-        }
-        if (DEFINED(scalePtr->scrollMax)) {
-            worldMax = scalePtr->scrollMax;
-        }
-        viewMin = scalePtr->min;
-        viewMax = scalePtr->max;
-        if (viewMin < worldMin) {
-            viewMin = worldMin;
-        }
-        if (viewMax > worldMax) {
-            viewMax = worldMax;
-        }
-        if (IsLogScale(scalePtr)) {
-            worldMin = log10(worldMin);
-            worldMax = log10(worldMax);
-            viewMin = log10(viewMin);
-            viewMax = log10(viewMax);
-        }
-        worldWidth = worldMax - worldMin;       
-        viewWidth = viewMax - viewMin;
-        isHoriz = HORIZONTAL(scalePtr);
-
-        if (isHoriz != ((scalePtr->flags & DECREASING) != 0)) {
-            fract = (viewMin - worldMin) / worldWidth;
-        } else {
-            fract = (worldMax - viewMax) / worldWidth;
-        }
-        fract = AdjustViewport(fract, viewWidth / worldWidth);
-
-        if (isHoriz != ((scalePtr->flags & DECREASING) != 0)) {
-            viewMin = (fract * worldWidth);
-            scalePtr->min = viewMin + worldMin;
-            scalePtr->max = scalePtr->min + viewWidth;
-            viewMax = viewMin + viewWidth;
-            if (IsLogScale(scalePtr)) {
-                if (scalePtr->min > 0.0) {
-                    scalePtr->min = EXP10(scalePtr->min);
-                    scalePtr->max = EXP10(scalePtr->max);
-                } else {
-                    scalePtr->min = EXP10(scalePtr->min) + scalePtr->min - 1.0;
-                    scalePtr->max = EXP10(scalePtr->max) + scalePtr->min - 1.0;
-                }
-            }
-            Blt_UpdateScrollbar(graphPtr->interp, scalePtr->scrollCmdObjPtr,
-                (int)viewMin, (int)viewMax, (int)worldWidth);
-        } else {
-            viewMax = (fract * worldWidth);
-            scalePtr->max = worldMax - viewMax;
-            scalePtr->min = scalePtr->max - viewWidth;
-            viewMin = viewMax + viewWidth;
-            if (IsLogScale(scalePtr)) {
-                if (scalePtr->min > 0.0) {
-                    scalePtr->min = EXP10(scalePtr->min);
-                    scalePtr->max = EXP10(scalePtr->max);
-                } else {
-                    scalePtr->min = EXP10(scalePtr->min) + scalePtr->min - 1.0;
-                    scalePtr->max = EXP10(scalePtr->max) + scalePtr->min - 1.0;
-                }
-            }
-            Blt_UpdateScrollbar(graphPtr->interp, scalePtr->scrollCmdObjPtr,
-                (int)viewMax, (int)viewMin, (int)worldWidth);
-        }
-    }
-    if (scalePtr->flags & TICKLABELS) {
-        Blt_ChainLink link;
-        TextStyle ts;
-
-        Blt_Ts_InitStyle(ts);
-        Blt_Ts_SetAngle(ts, scalePtr->tickAngle);
-        Blt_Ts_SetFont(ts, scalePtr->tickFont);
-        Blt_Ts_SetPadding(ts, 2, 0, 0, 0);
-        Blt_Ts_SetAnchor(ts, scalePtr->tickAnchor);
-        if (scalePtr->flags & ACTIVE) {
-            Blt_Ts_SetForeground(ts, scalePtr->activeFgColor);
-        } else {
-            Blt_Ts_SetForeground(ts, scalePtr->tickColor);
-        }
-        for (link = Blt_Chain_FirstLink(scalePtr->tickLabels); link != NULL;
-            link = Blt_Chain_NextLink(link)) {  
-            TickLabel *labelPtr;
-
-            labelPtr = Blt_Chain_GetValue(link);
-            /* Draw major tick labels */
-            Blt_DrawText(graphPtr->tkwin, drawable, labelPtr->string, &ts, 
-                (int)labelPtr->anchorPos.x, (int)labelPtr->anchorPos.y);
-        }
-    }
-    if ((scalePtr->numSegments > 0) && (scalePtr->tickLineWidth > 0)) {       
-        GC gc;
-
-        gc = (scalePtr->flags & ACTIVE) ? scalePtr->activeTickGC :
-            scalePtr->tickGC;
-        /* Draw the tick marks and scale line. */
-        Blt_DrawSegments2d(graphPtr->display, drawable, gc, scalePtr->segments, 
-                scalePtr->numSegments);
-    }
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * GetAxisGeometry --
- *
- * Results:
- *      None.
- *
- *      |h|     label     value
- *           spectrum.
- *                                  V
- *           ------------------------
- *                       x
- *           ------------------------
- *           ^   |   |   |   |   |   |
- *           |   |   |   |   |   |   |
- *           0  10  20  30  40  50  60
- *
- *
- * Exterior axis:
- *                    l       r
- *  |a|b|c|d|e|f|g|h|i|   j   |i|h|g|f|e|d|c|d|a|
- *
- * Interior axis: 
- *                  l           r
- *  |a|b|c|d|h|g|f|e|     j     |e|f|g|h|d|c|b|a|
- *               i..             ..i 
- * a = highlight thickness
- * b = graph borderwidth
- * c = axis title
- * d = tick label 
- * e = tick 
- * f = axis line
- * g = 1 pixel pad
- * h = plot borderwidth
- * i = plot pad
- * j = plot area 
- *---------------------------------------------------------------------------
- */
-static void
-GetAxisGeometry(Scale *scalePtr)
-{
-    int h;
-    int pad, numTicks;
-    Tick left, right;
-    
-    FreeTickLabels(scalePtr->tickLabels);
-    h = 0;
-    
-    scalePtr->maxLabelHeight = scalePtr->maxLabelWidth = 0;
-    
-    /* Compute the tick labels. */
-    numTicks = scalePtr->major.ticks.numSteps;
-    assert(numTicks <= MAXTICKS);
-    for (left = FirstMajorTick(scalePtr); left.isValid; left = right) {
-        TickLabel *labelPtr;
-        double mid;
-        int lw, lh;                 /* Label width and height. */
-        
-        right = NextMajorTick(scalePtr);
-        mid = left.value;
-        if ((scalePtr->flags & LABELOFFSET) && (right.isValid)) {
-            mid = (right.value - left.value) * 0.5;
-        }
-        if (!InRange(mid, &scalePtr->tickRange)) {
-            continue;
-        }
-        labelPtr = MakeLabel(scalePtr, left.value);
-        Blt_Chain_Append(scalePtr->tickLabels, labelPtr);
-        /* 
-         * Get the dimensions of each tick label.  Remember tick labels
-         * can be multi-lined and/or rotated.
-         */
-        Blt_GetTextExtents(scalePtr->tickFont, 0, labelPtr->string, -1, 
-                           &labelPtr->width, &labelPtr->height);
-        
-        if (scalePtr->tickAngle != 0.0f) {
-            double rlw, rlh;        /* Rotated label width and height. */
-            Blt_GetBoundingBox((double)labelPtr->width, 
-                               (double)labelPtr->height, 
-                               scalePtr->tickAngle, &rlw, &rlh, NULL);
-            lw = ROUND(rlw), lh = ROUND(rlh);
-        } else {
-            lw = labelPtr->width;
-            lh = labelPtr->height;
-        }
-        if (scalePtr->maxLabelWidth < lw) {
-            scalePtr->maxLabelWidth = lw;
-        }
-        if (scalePtr->maxLabelHeight < lh) {
-            scalePtr->maxLabelHeight = lh;
-        }
-    }
-    assert(Blt_Chain_GetLength(scalePtr->tickLabels) <= numTicks);
-    
-    Blt_GetTextExtents(scalePtr->titleFont, 0, scalePtr->title, -1, &tw, &th);
-    
-    pad = 0;
-    if (scalePtr->flags & EXTERIOR) {
-        /* Because the axis cap style is "CapProjecting", we need to
-         * account for an extra 1.5 linewidth at the end of each line.  */
-        pad = ((scalePtr->tickLineWidth * 12) / 8);
-    }
-    if (HORIZONTAL(scalePtr)) {
-        h += scalePtr->maxLabelHeight + pad;
-    } else {
-        h += scalePtr->maxLabelWidth + pad;
-        if (scalePtr->maxLabelWidth > 0) {
-            h += 5;                 /* Pad either size of label. */
-        }  
-    }
-    h += 2 * SCALE_PAD_TITLE;
-    if ((scalePtr->tickLineWidth > 0) && (scalePtr->flags & EXTERIOR)) {
-        /* Distance from axis line to tick label. */
-        h += scalePtr->tickLength;
-    }
-
-    h += h;
-    
-    /* Correct for orientation of the axis. */
-    if (HORIZONTAL(scalePtr)) {
-        scalePtr->height = h;
-    } else {
-        scalePtr->width = h;
-    }
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * GetMarginGeometry --
- *
- *      Examines all the axes in the given margin and determines the area
- *      required to display them.
- *
- *      Note: For multiple axes, the titles are displayed in another
- *            margin. So we must keep track of the widest title.
- *      
- * Results:
- *      Returns the width or height of the margin, depending if it runs
- *      horizontally along the graph or vertically.
- *
- * Side Effects:
- *      The area width and height set in the margin.  Note again that this
- *      may be corrected later (mulitple axes) to adjust for the longest
- *      title in another margin.
- *
- *---------------------------------------------------------------------------
- */
-static int
-GetMarginGeometry(Graph *graphPtr, Margin *marginPtr)
-{
-    Axis *scalePtr;
-    int l, w, h;                        /* Length, width, and height. */
-    int isHoriz;
-    unsigned int numVisible;
-    
-    isHoriz = HORIZONTAL(marginPtr);
-
-    /* Count the visible axes. */
-    numVisible = 0;
-    l = w = h = 0;
-    /* Need to track the widest and tallest tick labels in the margin. */
-    marginPtr->maxAxisLabelWidth = marginPtr->maxAxisLabelHeight = 0;
-    if (graphPtr->flags & STACK_AXES) {
-        for (scalePtr = FirstAxis(marginPtr); scalePtr != NULL;
-             scalePtr = NextAxis(scalePtr)) {
-            if (scalePtr->flags & DELETED) {
-                continue;
-            }
-            if (graphPtr->flags & GET_AXIS_GEOMETRY) {
-                Blt_GetAxisGeometry(graphPtr, scalePtr);
-            }
-            if (scalePtr->flags & HIDDEN) {
-                continue;
-            }
-            numVisible++;
-            if (isHoriz) {
-                if (h < scalePtr->height) {
-                    h = scalePtr->height;
-                }
-            } else {
-                if (w < scalePtr->width) {
-                    w = scalePtr->width;
-                }
-            }
-            if (scalePtr->maxLabelWidth > marginPtr->maxAxisLabelWidth) {
-                marginPtr->maxAxisLabelWidth = scalePtr->maxLabelWidth;
-            }
-            if (scalePtr->maxLabelHeight > marginPtr->maxAxisLabelHeight) {
-                marginPtr->maxAxisLabelHeight = scalePtr->maxLabelHeight;
-            }
-        }
-    } else {
-        for (scalePtr = FirstAxis(marginPtr); scalePtr != NULL;
-             scalePtr = NextAxis(scalePtr)) {
-            if (scalePtr->flags & DELETED) {
-                continue;
-            }
-            if (graphPtr->flags & GET_AXIS_GEOMETRY) {
-                Blt_GetAxisGeometry(graphPtr, scalePtr);
-            }
-            if (scalePtr->flags & HIDDEN) {
-                continue;
-            }
-            numVisible++;
-            if ((scalePtr->titleAlternate) && (l < scalePtr->titleWidth)) {
-                l = scalePtr->titleWidth;
-            }
-            if (isHoriz) {
-                h += scalePtr->height;
-            } else {
-                w += scalePtr->width;
-            }
-            if (scalePtr->maxLabelWidth > marginPtr->maxAxisLabelWidth) {
-                marginPtr->maxAxisLabelWidth = scalePtr->maxLabelWidth;
-            }
-            if (scalePtr->maxLabelHeight > marginPtr->maxAxisLabelHeight) {
-                marginPtr->maxAxisLabelHeight = scalePtr->maxLabelHeight;
-            }
-        }
-    }
-    /* Enforce a minimum size for margins. */
-    if (w < 3) {
-        w = 3;
-    }
-    if (h < 3) {
-        h = 3;
-    }
-    marginPtr->numVisibleAxes = numVisible;
-    marginPtr->axesTitleLength = l;
-    marginPtr->width = w;
-    marginPtr->height = h;
-    marginPtr->axesOffset = (isHoriz) ? h : w;
-    return marginPtr->axesOffset;
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * MapScale --
- *
- *      Calculate the layout of the graph.  Based upon the data, axis limits,
- *      X and Y titles, and title height, determine the cavity left which is
- *      the plotting surface.  The first step get the data and axis limits for
- *      calculating the space needed for the top, bottom, left, and right
- *      margins.
- *
- *      1) The LEFT margin is the area from the left border to the Y axis 
- *         (not including ticks). It composes the border width, the width an 
- *         optional Y axis label and its padding, and the tick numeric labels. 
- *         The Y axis label is rotated 90 degrees so that the width is the 
- *         font height.
- *
- *      2) The RIGHT margin is the area from the end of the graph
- *         to the right window border. It composes the border width,
- *         some padding, the font height (this may be dubious. It
- *         appears to provide a more even border), the max of the
- *         legend width and 1/2 max X tick number. This last part is
- *         so that the last tick label is not clipped.
- *
- *           Window Width
- *      ___________________________________________________________
- *      |          |                               |               |
- *      |          |   TOP  height of title        |               |
- *      |          |                               |               |
- *      |          |           x2 title            |               |
- *      |          |                               |               |
- *      |          |        height of x2-axis      |               |
- *      |__________|_______________________________|_______________|  W
- *      |          | -plotpady                     |               |  i
- *      |__________|_______________________________|_______________|  n
- *      |          | top                   right   |               |  d
- *      |          |                               |               |  o
- *      |   LEFT   |                               |     RIGHT     |  w
- *      |          |                               |               |
- *      | y        |     Free area = 104%          |      y2       |  H
- *      |          |     Plotting surface = 100%   |               |  e
- *      | t        |     Tick length = 2 + 2%      |      t        |  i
- *      | i        |                               |      i        |  g
- *      | t        |                               |      t  legend|  h
- *      | l        |                               |      l   width|  t
- *      | e        |                               |      e        |
- *      |    height|                               |height         |
- *      |       of |                               | of            |
- *      |    y-axis|                               |y2-axis        |
- *      |          |                               |               |
- *      |          |origin 0,0                     |               |
- *      |__________|_left_________________bottom___|_______________|
- *      |          |-plotpady                      |               |
- *      |__________|_______________________________|_______________|
- *      |          | (xoffset, yoffset)            |               |
- *      |          |                               |               |
- *      |          |       height of x-axis        |               |
- *      |          |                               |               |
- *      |          |   BOTTOM   x title            |               |
- *      |__________|_______________________________|_______________|
- *
- * 3) The TOP margin is the area from the top window border to the top
- *    of the graph. It composes the border width, twice the height of
- *    the title font (if one is given) and some padding between the
- *    title.
- *
- * 4) The BOTTOM margin is area from the bottom window border to the
- *    X axis (not including ticks). It composes the border width, the height
- *    an optional X axis label and its padding, the height of the font
- *    of the tick labels.
- *
- * The plotting area is between the margins which includes the X and Y axes
- * including the ticks but not the tick numeric labels. The length of the
- * ticks and its padding is 5% of the entire plotting area.  Hence the
- * entire plotting area is scaled as 105% of the width and height of the
- * area.
- *
- * The axis labels, ticks labels, title, and legend may or may not be
- * displayed which must be taken into account.
- *
- * if reqWidth > 0 : set outer size
- * if reqPlotWidth > 0 : set plot size
- *---------------------------------------------------------------------------
- */
-static void
-ComputeGeometry(Scale *scalePtr)
-{
-    int left, right, top, bottom;
-    int plotWidth, plotHeight;
-    int inset, inset2;
-    int width, height;
-    int pad;
-
-    width = graphPtr->width;
-    height = graphPtr->height;
-
-    GetAxisGeometry(scalePtr);
-    if (HORIZONATAL(scalePtr)) {
-        pad = scalePtr->maxAxisLabelWidth;
-        pad = pad / 2 + 3;
-        if (right < pad) {
-            right = pad;
-        }
-        if (left < pad) {
-            left = pad;
-        }
-    } else {
-        pad = scalePtr->maxAxisLabelHeight;
-        if (pad < graphPtr->rightPtr->maxAxisLabelHeight) {
-            pad = graphPtr->rightPtr->maxAxisLabelHeight;
-        }
-        pad = pad / 2;
-        if (top < pad) {
-            top = pad;
-        }
-        if (bottom < pad) {
-            bottom = pad;
-        }
-    }
-
-    {
-        Blt_FontMetrics fm;
-
-        Blt_Font_GetMetrics(scalePtr->tickFont, &fm);
-        scalePtr->arrowHeight = scalePtr->arrowWidth = fm.linespace;
-    }
-
-    /* 
-     * Step 3: Estimate the size of the plot area from the remaining
-     *         space.  This may be overridden by the -plotwidth and
-     *         -plotheight graph options.  We use this to compute the
-     *         size of the legend. 
-     */
-    if (width == 0) {
-        width = 400;
-    }
-    if (height == 0) {
-        height = 400;
-    }
-    plotWidth  = (graphPtr->reqPlotWidth > 0) ? graphPtr->reqPlotWidth :
-        width - (inset2 + left + right); /* Plot width. */
-    plotHeight = (graphPtr->reqPlotHeight > 0) ? graphPtr->reqPlotHeight : 
-        height - (inset2 + top + bottom); /* Plot height. */
-
-    /* 
-     * Step 4:  Add the legend to the appropiate margin. 
-     */
-    if (!Blt_Legend_IsHidden(graphPtr)) {
-        switch (Blt_Legend_Site(graphPtr)) {
-        case LEGEND_RIGHT:
-            right += Blt_Legend_Width(graphPtr) + 2;
-            break;
-        case LEGEND_LEFT:
-            left += Blt_Legend_Width(graphPtr) + 2;
-            break;
-        case LEGEND_TOP:
-            top += Blt_Legend_Height(graphPtr) + 2;
-            break;
-        case LEGEND_BOTTOM:
-            bottom += Blt_Legend_Height(graphPtr) + 2;
-            break;
-        case LEGEND_XY:
-        case LEGEND_PLOT:
-        case LEGEND_WINDOW:
-            /* Do nothing. */
-            break;
-        }
-    }
-    /* 
-     * Recompute the plotarea or graph size, now accounting for the legend. 
-     */
-    if (graphPtr->reqPlotWidth == 0) {
-        plotWidth = width  - (inset2 + left + right);
-        if (plotWidth < 1) {
-            plotWidth = 1;
-        }
-    }
-    if (graphPtr->reqPlotHeight == 0) {
-        plotHeight = height - (inset2 + top + bottom);
-        if (plotHeight < 1) {
-            plotHeight = 1;
-        }
-    }
-    /*
-     * Step 5: If necessary, correct for the requested plot area aspect
-     *         ratio.
-     */
-    if ((graphPtr->reqPlotWidth == 0) && (graphPtr->reqPlotHeight == 0) && 
-        (graphPtr->aspect > 0.0f)) {
-        float ratio;
-
-        /* 
-         * Shrink one dimension of the plotarea to fit the requested
-         * width/height aspect ratio.
-         */
-        ratio = (float)plotWidth / (float)plotHeight;
-        if (ratio > graphPtr->aspect) {
-            int sw;
-
-            /* Shrink the width. */
-            sw = (int)(plotHeight * graphPtr->aspect);
-            if (sw < 1) {
-                sw = 1;
-            }
-            /* Add the difference to the right margin. */
-            /* CHECK THIS: w = sw; */
-            right += (plotWidth - sw);
-        } else {
-            int sh;
-
-            /* Shrink the height. */
-            sh = (int)(plotWidth / graphPtr->aspect);
-            if (sh < 1) {
-                sh = 1;
-            }
-            /* Add the difference to the top margin. */
-            /* CHECK THIS: h = sh; */
-            top += (plotHeight - sh); 
-        }
-    }
-
-    /* 
-     * Step 6: If there are multiple axes in a margin, the axis titles will be
-     *         displayed in the adjoining margins.  Make sure there's room 
-     *         for the longest axis titles.
-     */
-    if (top < graphPtr->leftPtr->axesTitleLength) {
-        top = graphPtr->leftPtr->axesTitleLength;
-    }
-    if (right < graphPtr->bottomPtr->axesTitleLength) {
-        right = graphPtr->bottomPtr->axesTitleLength;
-    }
-    if (top < graphPtr->rightPtr->axesTitleLength) {
-        top = graphPtr->rightPtr->axesTitleLength;
-    }
-    if (right < graphPtr->topPtr->axesTitleLength) {
-        right = graphPtr->topPtr->axesTitleLength;
-    }
-
-    /* 
-     * Step 7: Override calculated values with requested margin sizes.
-     */
-    if (graphPtr->reqLeftMarginSize > 0) {
-        left = graphPtr->reqLeftMarginSize;
-    }
-    if (graphPtr->reqRightMarginSize > 0) {
-        right = graphPtr->reqRightMarginSize;
-    }
-    if (graphPtr->reqTopMarginSize > 0) {
-        top = graphPtr->reqTopMarginSize;
-    }
-    if (graphPtr->reqBottomMarginSize > 0) {
-        bottom = graphPtr->reqBottomMarginSize;
-    }
-    if (graphPtr->reqPlotWidth > 0) {   
-        int w;
-
-        /* 
-         * Width of plotarea is constained.  If there's extra space, add it
-         * to th left and/or right margins.  If there's too little, grow
-         * the graph width to accomodate it.
-         */
-        w = plotWidth + inset2 + left + right;
-        if (width > w) {                /* Extra space in window. */
-            int extra;
-
-            extra = (width - w) / 2;
-            if (graphPtr->reqLeftMarginSize == 0) { 
-                left += extra;
-                if (graphPtr->reqRightMarginSize == 0) { 
-                    right += extra;
-                } else {
-                    left += extra;
-                }
-            } else if (graphPtr->reqRightMarginSize == 0) {
-                right += extra + extra;
-            }
-        } else if (width < w) {
-            width = w;
-        }
+    if (range > (SECONDS_MONTH * 2.1)) {
+        return UNITS_MONTHS;
     } 
-    if (graphPtr->reqPlotHeight > 0) {  /* Constrain the plotarea height. */
-        int h;
-
-        /* 
-         * Height of plotarea is constained.  If there's extra space, add
-         * it to th top and/or bottom margins.  If there's too little, grow
-         * the graph height to accomodate it.
-         */
-        h = plotHeight + inset2 + top + bottom;
-        if (height > h) {               /* Extra space in window. */
-            int extra;
-
-            extra = (height - h) / 2;
-            if (graphPtr->reqTopMarginSize == 0) { 
-                top += extra;
-                if (graphPtr->reqBottomMarginSize == 0) { 
-                    bottom += extra;
-                } else {
-                    top += extra;
-                }
-            } else if (graphPtr->reqBottomMarginSize == 0) {
-                bottom += extra + extra;
-            }
-        } else if (height < h) {
-            height = h;
-        }
-    }   
-    graphPtr->width  = width;
-    graphPtr->height = height;
-    graphPtr->x1 = left + inset;
-    graphPtr->y1 = top  + inset;
-    graphPtr->x2 = width  - right  - inset;
-    graphPtr->y2 = height - bottom - inset;
-    if (graphPtr->plotRelief == TK_RELIEF_SOLID) {
-        graphPtr->x1--;
-        graphPtr->y1--;
-    }
-    graphPtr->leftPtr->width    = left   + graphPtr->inset;
-    graphPtr->rightPtr->width   = right  + graphPtr->inset;
-    graphPtr->topPtr->height    = top    + graphPtr->inset;
-    graphPtr->bottomPtr->height = bottom + graphPtr->inset;
-            
-    graphPtr->vOffset = graphPtr->y1 + graphPtr->padTop;
-    graphPtr->vRange  = plotHeight - PADDING(graphPtr->padY);
-    graphPtr->hOffset = graphPtr->x1 + graphPtr->padLeft;
-    graphPtr->hRange  = plotWidth  - PADDING(graphPtr->padX);
-
-    if (graphPtr->vRange < 1) {
-        graphPtr->vRange = 1;
-    }
-    if (graphPtr->hRange < 1) {
-        graphPtr->hRange = 1;
-    }
-    graphPtr->hScale = 1.0f / (float)graphPtr->hRange;
-    graphPtr->vScale = 1.0f / (float)graphPtr->vRange;
-
-    /*
-     * Calculate the placement of the graph title so it is centered within the
-     * space provided for it in the top margin
-     */
-    graphPtr->titleY = 3 + graphPtr->inset;
-    graphPtr->titleX = (graphPtr->x2 + graphPtr->x1) / 2;
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * ConfigureScale --
- *
- *      Configures axis attributes (font, line width, label, etc).
- *
- * Results:
- *      The return value is a standard TCL result.
- *
- * Side Effects:
- *      Axis layout is deferred until the height and width of the window are
- *      known.
- *
- *---------------------------------------------------------------------------
- */
-static int
-ConfigureScale(Scale *scalePtr)
-{
-    float angle;
-
-    /* Check that the designate interval represents a valid range. Swap
-     * values and if min is greater than max. */
-    if (scalePtr->outerLeft >= scalePtr->outerRight) {
-        /* Just reverse the values. */
-        tmp = scalePtr->outerLeft;
-        scalePtr->outerLeft = scalePtr->outerRight;
-        scalePtr->outerRight = tmp;
-    }
-    /* Log scale limits must be positive. Move the limits to the positive
-     * range. */
-    if ((IsLogScale(scalePtr)) && (scalePtr->outerLeft <= 0.0)) {
-        double delta;
-        
-        delta = 1.0 - scalePtr->outerLeft;
-        scalePtr->outerLeft = 1.0;
-        scalePtr->outerRight = scalePtr->outerRight + delta;
-    }
-    /* If no range min and max is set, use the data range values. */
-    scalePtr->innerLeft = (DEFINED(scalePtr->reqInnerLeft))
-        ? scalePtr->outerLeft : scalePtr->reqInnerLeft;
-    scalePtr->innerRight = (DEFINED(scalePtr->reqInnerRight))
-        ? scalePtr->outerRight : scalePtr->reqInnerRight;
-
-    /* Subrange min and max must be within the scale's range. */
-    if (scalePtr->innerLeft < scalePtr->outerLeft) {
-        scalePtr->innerLeft = scalePtr->outerLeft;
-    }
-    if (scalePtr->innerRight > scalePtr->outerRight) {
-        scalePtr->innerRight = scalePtr->outerRight;
-    }
-    if ((Blt_ConfigModified(configSpecs, "-rangemin", (char *)NULL)) &&
-        (scalePtr->innerLeft > scalePtr->innerRight)) {
-        scalePtr->innerLeft = scalePtr->innerRight;
-    }
-    if ((Blt_ConfigModified(configSpecs, "-rangemax", (char *)NULL)) &&
-        (scalePtr->innerRight < scalePtr->innerLeft)) {
-        scalePtr->innerRight = scalePtr->innerLeft;
-    }
-    if (scalePtr->innerLeft > scalePtr->innerRight) {
-        /* Just reverse the values. */
-        tmp = scalePtr->innerLeft;
-        scalePtr->innerLeft = scalePtr->innerRight;
-        scalePtr->innerRight = tmp;
-    }
-    if (!DEFINED(scalePtr->nom)) {
-        scalePtr->nom = scalePtr->innerLeft;
-    }        
-    if (scalePtr->nom < scalePtr->innerLeft) {
-        scalePtr->nom = scalePtr->innerLeft;
-    }
-    if (scalePtr->nom > scalePtr->innerRight) {
-        scalePtr->nom = scalePtr->innerRight;
-    }
-    if (IsLogScale(scalePtr)) {
-        LogScaleAxis(scalePtr);
-    } else if (IsTimeScale(scalePtr)) {
-        TimeScaleAxis(scalePtr);
-    } else {
-        LinearScaleAxis(scalePtr);
-    }
-
-    ComputeGeometry(scalePtr)
-    angle = FMOD(scalePtr->tickAngle, 360.0f);
-    if (angle < 0.0f) {
-        angle += 360.0f;
-    }
-    if (scalePtr->normalBg != NULL) {
-        Blt_Bg_SetChangedProc(scalePtr->normalBg, Blt_UpdateGraph, 
-                scalePtr);
-    }
-    scalePtr->tickAngle = angle;
-    ResetTextStyles(scalePtr);
-
-    scalePtr->titleWidth = scalePtr->titleHeight = 0;
-    if (scalePtr->title != NULL) {
-        unsigned int w, h;
-
-        Blt_GetTextExtents(scalePtr->titleFont, 0, scalePtr->title, -1, &w, &h);
-        scalePtr->titleWidth = w;
-        scalePtr->titleHeight = h;
-    }
-    EventuallyRedraw(scalePtr);
-    return TCL_OK;
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * NewScale --
- *
- *      Create and initialize a structure containing information to display
- *      a scale.
- *
- * Results:
- *      The return value is a pointer to an Scale structure.
- *
- *---------------------------------------------------------------------------
- */
-static Scale *
-NewScale(Tcl_Interp *interp, Tk_Window tkwin)
-{
-    Scale *scalePtr;
-    Blt_HashEntry *hPtr;
-    int isNew;
-
-    scalePtr = Blt_Calloc(1, sizeof(Scale));
-    if (scalePtr == NULL) {
-        Tcl_AppendResult(interp, "can't allocate memory for scale \"", 
-                Tk_PathName(tkwin), "\"", (char *)NULL);
-        return NULL;
-    }
-    Tk_SetClass(tkwin, "BltScale");
-    scalePtr->display = Tk_Display(tkwin);
-    scalePtr->interp = interp;
-    scalePtr->tkwin = tkwin;
-    scalePtr->relief = TK_RELIEF_FLAT;
-    scalePtr->activeRelief = TK_RELIEF_RAISED;
-    scalePtr->flags |= TIGHT;
-    scalePtr->reqNumMinorTicks = 2;
-    scalePtr->reqNumMajorTicks = 10;
-    scalePtr->tickLength = 8;
-    scalePtr->colorbar.thickness = 0;
-    scalePtr->outerLeft = 0.1;
-    scalePtr->outerRight = 1.0;
-    scalePtr->flags = (TICKLABELS| AUTO_MAJOR| AUTO_MINOR | EXTERIOR);
-    scalePtr->tickLabels = Blt_Chain_Create();
-    scalePtr->tickLineWidth = 1;
-    Blt_SetWindowInstanceData(tkwin, scalePtr);
-    return scalePtr;
-}
-
-int
-Blt_DefaultAxes(Graph *graphPtr)
-{
-    int i;
-    unsigned int flags;
-
-    for (i = 0; i < 4; i++) {
-        Margin *marginPtr;
-
-        marginPtr = graphPtr->margins + i;
-        marginPtr->axes = Blt_Chain_Create();
-        marginPtr->name = axisNames[i].name;
-    }
-    flags = Blt_GraphType(graphPtr);
-    for (i = 0; i < 4; i++) {
-        Axis *scalePtr;
-        Margin *marginPtr;
-
-        marginPtr = graphPtr->margins + i;
-        /* Create a default axis for each chain. */
-        scalePtr = NewAxis(graphPtr, marginPtr->name, i);
-        if (scalePtr == NULL) {
-            return TCL_ERROR;
-        }
-        scalePtr->refCount = 1;  /* Default axes are assumed in use. */
-        scalePtr->marginPtr = marginPtr;
-        Blt_GraphSetObjectClass(&scalePtr->obj, axisNames[i].classId);
-        if (Blt_ConfigureComponentFromObj(graphPtr->interp, graphPtr->tkwin,
-                scalePtr->obj.name, "Axis", configSpecs, 0, (Tcl_Obj **)NULL,
-                (char *)scalePtr, flags) != TCL_OK) {
-            return TCL_ERROR;
-        }
-        if (ConfigureAxis(scalePtr) != TCL_OK) {
-            return TCL_ERROR;
-        }
-        scalePtr->link = Blt_Chain_Append(marginPtr->axes, scalePtr);
-    }
-    /* The extra axes are not attached to a specific margin. */
-    for (i = 4; i < numAxisNames; i++) {
-        Axis *scalePtr;
-
-        scalePtr = NewAxis(graphPtr, axisNames[i].name, MARGIN_NONE);
-        if (scalePtr == NULL) {
-            return TCL_ERROR;
-        }
-        scalePtr->refCount = 1;          
-        scalePtr->marginPtr = NULL;
-        Blt_GraphSetObjectClass(&scalePtr->obj, axisNames[i].classId);
-        if (Blt_ConfigureComponentFromObj(graphPtr->interp, graphPtr->tkwin,
-                scalePtr->obj.name, "Axis", configSpecs, 0, (Tcl_Obj **)NULL,
-                (char *)scalePtr, flags) != TCL_OK) {
-            return TCL_ERROR;
-        }
-        if (ConfigureAxis(scalePtr) != TCL_OK) {
-            return TCL_ERROR;
-        }
-    }
-    return TCL_OK;
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * AxisCreateOp --
- *
- *      Creates a new axis.
- *
- * Results:
- *      Returns a standard TCL result.
- *
- *---------------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static int
-AxisCreateOp(ClientData clientData, Tcl_Interp *interp, int objc, 
-             Tcl_Obj *const *objv)
-{
-    Graph *graphPtr = clientData;
-    Axis *scalePtr;
-    int flags;
-
-    scalePtr = NewAxis(graphPtr, Tcl_GetString(objv[3]), MARGIN_NONE);
-    if (scalePtr == NULL) {
-        return TCL_ERROR;
-    }
-    flags = Blt_GraphType(graphPtr);
-    if ((Blt_ConfigureComponentFromObj(interp, graphPtr->tkwin, 
-        scalePtr->obj.name, "Axis", configSpecs, objc - 4, objv + 4, 
-        (char *)scalePtr, flags) != TCL_OK) || 
-        (ConfigureAxis(scalePtr) != TCL_OK)) {
-        DestroyAxis(scalePtr);
-        return TCL_ERROR;
-    }
-    Tcl_SetStringObj(Tcl_GetObjResult(interp), scalePtr->obj.name, -1);
-    return TCL_OK;
-}
-/*
- *---------------------------------------------------------------------------
- *
- * AxisActivateOp --
- *
- *      Activates the axis, drawing the axis with its -activeforeground,
- *      -activebackgound, -activerelief attributes.
- *
- * Results:
- *      A standard TCL result.
- *
- * Side Effects:
- *      Graph will be redrawn to reflect the new axis attributes.
- *
- *---------------------------------------------------------------------------
- */
-static int
-AxisActivateOp(ClientData clientData, Tcl_Interp *interp, int objc, 
-               Tcl_Obj *const *objv)
-{
-    Graph *graphPtr = clientData;
-    Axis *scalePtr;
-
-    if (GetAxisFromObj(interp, graphPtr, objv[3], &scalePtr) != TCL_OK) {
-        return TCL_ERROR;
-    }
-    return ActivateOp(scalePtr, interp, objc, objv);
-}
-
-
-/*-------------------------------------------------------------------------------
- *
- * AxisBindOp --
- *
- *    .g axis bind axisName sequence command
- *
- *---------------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static int
-AxisBindOp(ClientData clientData, Tcl_Interp *interp, int objc, 
-           Tcl_Obj *const *objv)
-{
-    Graph *graphPtr = clientData;
-    if (objc == 3) {
-        Blt_HashEntry *hPtr;
-        Blt_HashSearch cursor;
-        Tcl_Obj *listObjPtr;
-
-        listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **)NULL);
-        for (hPtr = Blt_FirstHashEntry(&graphPtr->axes.bindTagTable, &cursor);
-             hPtr != NULL; hPtr = Blt_NextHashEntry(&cursor)) {
-            const char *tagName;
-            Tcl_Obj *objPtr;
-
-            tagName = Blt_GetHashKey(&graphPtr->axes.bindTagTable, hPtr);
-            objPtr = Tcl_NewStringObj(tagName, -1);
-            Tcl_ListObjAppendElement(interp, listObjPtr, objPtr);
-        }
-        Tcl_SetObjResult(interp, listObjPtr);
-        return TCL_OK;
-    }
-    return Blt_ConfigureBindingsFromObj(interp, graphPtr->bindTable, 
-        Blt_MakeAxisTag(graphPtr, Tcl_GetString(objv[3])), objc - 4, objv + 4);
-}
-
-
-/*
- *---------------------------------------------------------------------------
- *
- * AxisCgetOp --
- *
- *      Queries axis attributes (font, line width, label, etc).
- *
- * Results:
- *      Return value is a standard TCL result.  If querying configuration
- *      values, interp->result will contain the results.
- *
- *---------------------------------------------------------------------------
- */
-/* ARGSUSED */
-static int
-AxisCgetOp(ClientData clientData, Tcl_Interp *interp, int objc,
-           Tcl_Obj *const *objv)
-{
-    Graph *graphPtr = clientData;
-    Axis *scalePtr;
-
-    if (GetAxisFromObj(interp, graphPtr, objv[3], &scalePtr) != TCL_OK) {
-        return TCL_ERROR;
-    }
-    return CgetOp(scalePtr, interp, objc - 4, objv + 4);
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * AxisConfigureOp --
- *
- *      Queries or resets axis attributes (font, line width, label, etc).
- *
- * Results:
- *      Return value is a standard TCL result.  If querying configuration
- *      values, interp->result will contain the results.
- *
- * Side Effects:
- *      Axis resources are possibly allocated (GC, font). Axis layout is
- *      deferred until the height and width of the window are known.
- *
- *      pathName axis configure axisName ?option value ...?
- *---------------------------------------------------------------------------
- */
-static int
-AxisConfigureOp(ClientData clientData, Tcl_Interp *interp, int objc, 
-                Tcl_Obj *const *objv)
-{
-    Axis *scalePtr;
-    AxisIterator iter;
-    Graph *graphPtr = clientData;
-
-    /* Figure out where the option value pairs begin */
-    if (objc == 4) {
-        if (GetAxisFromObj(interp, graphPtr, objv[3], &scalePtr) != TCL_OK) {
-            return TCL_ERROR;           /* Can't find named axis */
-        }
-        return Blt_ConfigureInfoFromObj(interp, graphPtr->tkwin, configSpecs,
-                (char *)scalePtr, (Tcl_Obj *)NULL, BLT_CONFIG_OBJV_ONLY);
-    } else if (objc == 5) {
-        if (GetAxisFromObj(interp, graphPtr, objv[3], &scalePtr) != TCL_OK) {
-            return TCL_ERROR;           /* Can't find named axis */
-        }
-        return Blt_ConfigureInfoFromObj(interp, graphPtr->tkwin, configSpecs,
-                (char *)scalePtr, objv[4], BLT_CONFIG_OBJV_ONLY);
+    if (range > (SECONDS_WEEK * 2)) {
+        return UNITS_WEEKS;
     } 
-    if (GetAxisIterator(interp, graphPtr, objv[3], &iter) != TCL_OK) {
-        return TCL_ERROR;
+    if (range > (SECONDS_DAY * 2)) {
+        return UNITS_DAYS;
     }
-    for (scalePtr = FirstTaggedAxis(&iter); scalePtr != NULL; 
-         scalePtr = NextTaggedAxis(&iter)) {
-
-        if (ConfigureOp(scalePtr, interp, objc - 4, objv + 4) != TCL_OK) {
-            return TCL_ERROR;
-        }
+    if (range > (SECONDS_HOUR * 2)) {
+        return UNITS_HOURS;
     }
-    return TCL_OK;
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * AxisDeleteOp --
- *
- *      Deletes one or more axes.  The actual removal may be deferred until the
- *      axis is no longer used by any element. The axis can't be referenced by
- *      its name any longer and it may be recreated.
- *
- * Results:
- *      Returns a standard TCL result.
- *
- *---------------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static int
-AxisDeleteOp(ClientData clientData, Tcl_Interp *interp, int objc, 
-             Tcl_Obj *const *objv)
-{
-    Blt_HashEntry *hPtr;
-    Blt_HashSearch iter;
-    Blt_HashTable selected;
-    Graph *graphPtr = clientData;
-    int i;
-
-    Blt_InitHashTable(&selected, BLT_ONE_WORD_KEYS);
-    for (i = 3; i < objc; i++) {
-        Axis *scalePtr;
-        AxisIterator iter;
-
-        if (GetAxisIterator(interp, graphPtr, objv[i], &iter) != TCL_OK) {
-            Blt_DeleteHashTable(&selected);
-            return TCL_ERROR;
-        }
-        for (scalePtr = FirstTaggedAxis(&iter); scalePtr != NULL; 
-             scalePtr = NextTaggedAxis(&iter)) {
-            int isNew;
-            Blt_HashEntry *hPtr;
-
-            hPtr = Blt_CreateHashEntry(&selected, (char *)scalePtr, &isNew);
-            Blt_SetHashValue(hPtr, scalePtr);
-        }
+    if (range > (SECONDS_MINUTE * 2)) {
+        return UNITS_MINUTES;
     }
-    for (hPtr = Blt_FirstHashEntry(&selected, &iter); hPtr != NULL;
-         hPtr = Blt_NextHashEntry(&iter)) {
-        Axis *scalePtr;
-
-        scalePtr = Blt_GetHashValue(hPtr);
-        scalePtr->flags |= DELETED;
-        if (scalePtr->refCount == 0) {
-            DestroyAxis(scalePtr);
-        }
+    if (range > (SECONDS_SECOND * 2)) {
+        return UNITS_SECONDS;
     }
-    Blt_DeleteHashTable(&selected);
-    return TCL_OK;
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * AxisFocusOp --
- *
- *      Activates the axis, drawing the axis with its -activeforeground,
- *      -activebackgound, -activerelief attributes.
- *
- * Results:
- *      A standard TCL result.
- *
- * Side Effects:
- *      Graph will be redrawn to reflect the new axis attributes.
- *
- *---------------------------------------------------------------------------
- */
-static int
-AxisFocusOp(ClientData clientData, Tcl_Interp *interp, int objc,
-            Tcl_Obj *const *objv)
-{
-    Graph *graphPtr = clientData;
-
-    if (objc > 3) {
-        Axis *scalePtr;
-        const char *string;
-
-        scalePtr = NULL;
-        string = Tcl_GetString(objv[3]);
-        if ((string[0] != '\0') && 
-            (GetAxisFromObj(interp, graphPtr, objv[3], &scalePtr) != TCL_OK)) {
-            return TCL_ERROR;
-        }
-        graphPtr->focusPtr = scalePtr;
-        Blt_SetFocusItem(graphPtr->bindTable, graphPtr->focusPtr, NULL);
-    }
-    /* Return the name of the axis that has focus. */
-    if (graphPtr->focusPtr != NULL) {
-        Tcl_SetStringObj(Tcl_GetObjResult(interp), 
-                graphPtr->focusPtr->obj.name, -1);
-    }
-    return TCL_OK;
-}
-
-
-/*
- *---------------------------------------------------------------------------
- *
- * GetOp --
- *
- *    Returns the name of the picked axis (using the axis bind operation).
- *    Right now, the only name accepted is "current".
- *
- * Results:
- *    A standard TCL result.  The interpreter result will contain the name of
- *    the axis.
- *
- *      pathName get min|max|current|rmin|rmax|
- *
- *---------------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static int
-GetOp(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
-{
-    Scale *scalePtr = clientData;
-
-    /* Report only on axes. */
-    if ((objPtr != NULL) && (!objPtr->deleted) &&
-        ((objPtr->classId >= CID_NONE) && (objPtr->classId <= CID_AXIS_Z))) {
-        char c;
-        char  *string;
-
-        string = Tcl_GetString(objv[3]);
-        c = string[0];
-        if ((c == 'c') && (strcmp(string, "current") == 0)) {
-            Tcl_SetStringObj(Tcl_GetObjResult(interp), objPtr->name,-1);
-        } else if ((c == 'd') && (strcmp(string, "detail") == 0)) {
-            Axis *scalePtr;
-            
-            scalePtr = (Axis *)objPtr;
-            Tcl_SetStringObj(Tcl_GetObjResult(interp), scalePtr->detail, -1);
-        }
-    }
-    return TCL_OK;
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * AxisInvTransformOp --
- *
- *      Maps the given window coordinate into an axis-value.
- *
- * Results:
- *      Returns a standard TCL result.  interp->result contains the axis
- *      value. If an error occurred, TCL_ERROR is returned and interp->result
- *      will contain an error message.
- *
- *---------------------------------------------------------------------------
- */
-static int
-AxisInvTransformOp(ClientData clientData, Tcl_Interp *interp, int objc, 
-                   Tcl_Obj *const *objv)
-{
-    Graph *graphPtr = clientData;
-    Axis *scalePtr;
-
-    if (GetAxisFromObj(interp, graphPtr, objv[3], &scalePtr) != TCL_OK) {
-        return TCL_ERROR;
-    }
-    return InvTransformOp(scalePtr, interp, objc - 4, objv + 4);
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * AxisLimitsOp --
- *
- *      This procedure returns a string representing the axis limits of the
- *      graph.  The format of the string is { left top right bottom}.
- *
- * Results:
- *      Always returns TCL_OK.  The interp->result field is
- *      a list of the graph axis limits.
- *
- *---------------------------------------------------------------------------
- */
-static int
-AxisLimitsOp(ClientData clientData, Tcl_Interp *interp, int objc, 
-             Tcl_Obj *const *objv)
-{
-    Graph *graphPtr = clientData;
-    Axis *scalePtr;
-
-    if (GetAxisFromObj(interp, graphPtr, objv[3], &scalePtr) != TCL_OK) {
-        return TCL_ERROR;
-    }
-    return LimitsOp(scalePtr, interp, objc - 4, objv + 4);
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * AxisMarginOp --
- *
- *      This procedure returns a string representing the axis limits of the
- *      graph.  The format of the string is "left top right bottom".
- *
- * Results:
- *      Always returns TCL_OK.  The interp->result field is a list of the
- *      graph axis limits.
- *
- *---------------------------------------------------------------------------
- */
-static int
-AxisMarginOp(ClientData clientData, Tcl_Interp *interp, int objc, 
-             Tcl_Obj *const *objv)
-{
-    Graph *graphPtr = clientData;
-    Axis *scalePtr;
-
-    if (GetAxisFromObj(interp, graphPtr, objv[3], &scalePtr) != TCL_OK) {
-        return TCL_ERROR;
-    }
-    return MarginOp(scalePtr, interp, objc - 4, objv + 4);
-}
-
-typedef struct {
-    int flags;
-} NamesArgs;
-
-#define ZOOM    (1<<0)
-#define VISIBLE (1<<1)
-
-static Blt_SwitchSpec namesSwitches[] = 
-{
-    {BLT_SWITCH_BITS_NOARG, "-zoom", "", (char *)NULL,
-        Blt_Offset(NamesArgs, flags), 0, ZOOM},
-    {BLT_SWITCH_BITS_NOARG, "-visible", "", (char *)NULL,
-        Blt_Offset(NamesArgs, flags), 0, VISIBLE},
-    {BLT_SWITCH_END}
-};
-
-/*
- *---------------------------------------------------------------------------
- *
- * AxisNamesOp --
- *
- *      Return a list of the names of all the axes.
- *
- * Results:
- *      Returns a standard TCL result.
- *
- *      pathName axis names -zoom -visible ?pattern...?
- *---------------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static int
-AxisNamesOp(ClientData clientData, Tcl_Interp *interp, int objc,
-            Tcl_Obj *const *objv)
-{
-    Graph *graphPtr = clientData;
-    Tcl_Obj *listObjPtr;
-    NamesArgs args;
-    int i, count;
-    Blt_HashEntry *hPtr;
-    Blt_HashSearch cursor;
-    
-    count = 0;
-    for (i = 3; i < objc; i++) {
-        const char *string;
-
-        string = Tcl_GetString(objv[i]);
-        if (string[0] != '-') {
-            break;
-        }
-        count++;
-    }
-    args.flags = 0;
-    if (Blt_ParseSwitches(interp, namesSwitches, count, objv + 3, &args,
-                          BLT_SWITCH_DEFAULTS) < 0) {
-        return TCL_ERROR;
-    }
-    objc -= count;
-    objv += count;
-    listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **)NULL);
-    for (hPtr = Blt_FirstHashEntry(&graphPtr->axes.nameTable, &cursor);
-         hPtr != NULL; hPtr = Blt_NextHashEntry(&cursor)) {
-        Axis *scalePtr;
-        int match;
-        
-        scalePtr = Blt_GetHashValue(hPtr);
-        if (scalePtr->flags & DELETED) {
-            continue;
-        }
-        if (((scalePtr->flags & HIDDEN) || (scalePtr->marginPtr == NULL)) &&
-            (args.flags & (VISIBLE|ZOOM))) {
-            continue;               /* Don't zoom hidden axes. */
-        }
-        if ((scalePtr->obj.classId != CID_AXIS_X) &&
-            (scalePtr->obj.classId != CID_AXIS_Y) &&
-            (args.flags & ZOOM)) {
-            continue;               /* Zoom only X or Y axes. */
-        }
-        if ((scalePtr->marginPtr != NULL) &&
-            (scalePtr->marginPtr->numVisibleAxes > 1)) {
-            continue;               /* Don't zoom stacked axes. */
-        }
-        match = FALSE;
-        for (i = 3; i < objc; i++) {
-            const char *pattern;
-
-            pattern = Tcl_GetString(objv[i]);
-            if (Tcl_StringMatch(scalePtr->obj.name, pattern)) {
-                match = TRUE;
-                break;
-            }
-        }
-        if ((objc == 3) || (match)) {
-            Tcl_ListObjAppendElement(interp, listObjPtr, 
-                Tcl_NewStringObj(scalePtr->obj.name, -1));
-        }
-    }
-    Tcl_SetObjResult(interp, listObjPtr);
-    return TCL_OK;
-}
-
-
-/*
- *---------------------------------------------------------------------------
- *
- * TagAddOp --
- *
- *      .g axis tag add tagName elem1 elem2 elem2 elem4
- *
- *---------------------------------------------------------------------------
- */
-static int
-TagAddOp(ClientData clientData, Tcl_Interp *interp, int objc,
-         Tcl_Obj *const *objv)
-{
-    Graph *graphPtr = clientData;
-    const char *tag;
-
-    tag = Tcl_GetString(objv[4]);
-    if (strcmp(tag, "all") == 0) {
-        Tcl_AppendResult(interp, "can't add reserved tag \"", tag, "\"", 
-                         (char *)NULL);
-        return TCL_ERROR;
-    }
-    if (objc == 5) {
-        /* No axes specified.  Just add the tag. */
-        Blt_Tags_AddTag(&graphPtr->axes.tags, tag);
-    } else {
-        int i;
-
-        for (i = 5; i < objc; i++) {
-            Axis *scalePtr;
-            AxisIterator iter;
-            
-            if (GetAxisIterator(interp, graphPtr, objv[i], &iter) != TCL_OK){
-                return TCL_ERROR;
-            }
-            for (scalePtr = FirstTaggedAxis(&iter); scalePtr != NULL; 
-                 scalePtr = NextTaggedAxis(&iter)) {
-                Blt_Tags_AddItemToTag(&graphPtr->axes.tags, tag, scalePtr);
-            }
-        }
-    }
-    return TCL_OK;
-}
-
-
-/*
- *---------------------------------------------------------------------------
- *
- * TagDeleteOp --
- *
- *      .g axis tag delete tagName tab1 tab2 tab3
- *
- *---------------------------------------------------------------------------
- */
-static int
-TagDeleteOp(ClientData clientData, Tcl_Interp *interp, int objc,
-            Tcl_Obj *const *objv)
-{
-    Graph *graphPtr = clientData;
-    const char *tag;
-    int i;
-
-    tag = Tcl_GetString(objv[4]);
-    if (strcmp(tag, "all") == 0) {
-        Tcl_AppendResult(interp, "can't delete reserved tag \"", tag, "\"", 
-                         (char *)NULL);
-        return TCL_ERROR;
-    }
-    for (i = 4; i < objc; i++) {
-        Axis *scalePtr;
-        AxisIterator iter;
-        
-        if (GetAxisIterator(interp, graphPtr, objv[i], &iter) != TCL_OK) {
-            return TCL_ERROR;
-        }
-        for (scalePtr = FirstTaggedAxis(&iter); scalePtr != NULL; 
-             scalePtr = NextTaggedAxis(&iter)) {
-            Blt_Tags_RemoveItemFromTag(&graphPtr->axes.tags, tag, scalePtr);
-        }
-    }
-    return TCL_OK;
-}
-
-
-/*
- *---------------------------------------------------------------------------
- *
- * TagExistsOp --
- *
- *      Returns the existence of the one or more tags in the given node.  If
- *      the node has any the tags, true is return in the interpreter.
- *
- *      .g axis tag exists elem tag1 tag2 tag3...
- *
- *---------------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static int
-TagExistsOp(ClientData clientData, Tcl_Interp *interp, int objc,
-            Tcl_Obj *const *objv)
-{
-    AxisIterator iter;
-    Graph *graphPtr = clientData;
-    int i;
-
-    if (GetAxisIterator(interp, graphPtr, objv[4], &iter) != TCL_OK) {
-        return TCL_ERROR;
-    }
-    for (i = 5; i < objc; i++) {
-        const char *tag;
-        Axis *scalePtr;
-
-        tag = Tcl_GetString(objv[i]);
-        for (scalePtr = FirstTaggedAxis(&iter); scalePtr != NULL; 
-             scalePtr = NextTaggedAxis(&iter)) {
-            if (Blt_Tags_ItemHasTag(&graphPtr->axes.tags, scalePtr, tag)) {
-                Tcl_SetBooleanObj(Tcl_GetObjResult(interp), TRUE);
-                return TCL_OK;
-            }
-        }
-    }
-    Tcl_SetBooleanObj(Tcl_GetObjResult(interp), FALSE);
-    return TCL_OK;
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * TagForgetOp --
- *
- *      Removes the given tags from all tabs.
- *
- *      .g axis tag forget tag1 tag2 tag3...
- *
- *---------------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static int
-TagForgetOp(ClientData clientData, Tcl_Interp *interp, int objc,
-            Tcl_Obj *const *objv)
-{
-    Graph *graphPtr = clientData;
-    int i;
-
-    for (i = 4; i < objc; i++) {
-        const char *tag;
-
-        tag = Tcl_GetString(objv[i]);
-        Blt_Tags_ForgetTag(&graphPtr->axes.tags, tag);
-    }
-    return TCL_OK;
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * TagGetOp --
- *
- *      Returns tag names for a given node.  If one of more pattern arguments
- *      are provided, then only those matching tags are returned.
- *
- *      .t axis tag get elem pat1 pat2...
- *
- *---------------------------------------------------------------------------
- */
-static int
-TagGetOp(ClientData clientData, Tcl_Interp *interp, int objc,
-         Tcl_Obj *const *objv)
-{
-    Axis *scalePtr; 
-    AxisIterator iter;
-    Graph *graphPtr = clientData;
-    Tcl_Obj *listObjPtr;
-
-    if (GetAxisIterator(interp, graphPtr, objv[4], &iter) != TCL_OK) {
-        return TCL_ERROR;
-    }
-    listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **) NULL);
-    for (scalePtr = FirstTaggedAxis(&iter); scalePtr != NULL; 
-         scalePtr = NextTaggedAxis(&iter)) {
-        if (objc == 5) {
-            Blt_Tags_AppendTagsToObj(&graphPtr->axes.tags, scalePtr, 
-                listObjPtr);
-            Tcl_ListObjAppendElement(interp, listObjPtr, 
-                Tcl_NewStringObj("all", 3));
-        } else {
-            int i;
-            
-            /* Check if we need to add the special tags "all" */
-            for (i = 5; i < objc; i++) {
-                const char *pattern;
-
-                pattern = Tcl_GetString(objv[i]);
-                if (Tcl_StringMatch("all", pattern)) {
-                    Tcl_Obj *objPtr;
-
-                    objPtr = Tcl_NewStringObj("all", 3);
-                    Tcl_ListObjAppendElement(interp, listObjPtr, objPtr);
-                    break;
-                }
-            }
-            /* Now process any standard tags. */
-            for (i = 5; i < objc; i++) {
-                Blt_ChainLink link;
-                const char *pattern;
-                Blt_Chain chain;
-
-                chain = Blt_Chain_Create();
-                Blt_Tags_AppendTagsToChain(&graphPtr->axes.tags, scalePtr, 
-                        chain);
-                pattern = Tcl_GetString(objv[i]);
-                for (link = Blt_Chain_FirstLink(chain); link != NULL; 
-                     link = Blt_Chain_NextLink(link)) {
-                    const char *tag;
-                    Tcl_Obj *objPtr;
-
-                    tag = (const char *)Blt_Chain_GetValue(link);
-                    if (!Tcl_StringMatch(tag, pattern)) {
-                        continue;
-                    }
-                    objPtr = Tcl_NewStringObj(tag, -1);
-                    Tcl_ListObjAppendElement(interp, listObjPtr, objPtr);
-                }
-                Blt_Chain_Destroy(chain);
-            }
-        }    
-    }
-    Tcl_SetObjResult(interp, listObjPtr);
-    return TCL_OK;
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * TagNamesOp --
- *
- *      Returns the names of all the tags in the graph.  If one of more
- *      axis arguments are provided, then only the tags found in those
- *      axes are returned.
- *
- *      .g axis tag names elem elem elem...
- *
- *---------------------------------------------------------------------------
- */
-static int
-TagNamesOp(ClientData clientData, Tcl_Interp *interp, int objc,
-           Tcl_Obj *const *objv)
-{
-    Graph *graphPtr = clientData;
-    Tcl_Obj *listObjPtr, *objPtr;
-
-    listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **) NULL);
-    objPtr = Tcl_NewStringObj("all", -1);
-    Tcl_ListObjAppendElement(interp, listObjPtr, objPtr);
-    if (objc == 4) {
-        Blt_Tags_AppendAllTagsToObj(&graphPtr->axes.tags, listObjPtr);
-    } else {
-        Blt_HashTable selected;
-        int i;
-
-        Blt_InitHashTable(&selected, BLT_STRING_KEYS);
-        for (i = 4; i < objc; i++) {
-            AxisIterator iter;
-            Axis *scalePtr;
-
-            if (GetAxisIterator(interp, graphPtr, objv[i], &iter) != TCL_OK){
-                goto error;
-            }
-            for (scalePtr = FirstTaggedAxis(&iter); scalePtr != NULL; 
-                 scalePtr = NextTaggedAxis(&iter)) {
-                Blt_ChainLink link;
-                Blt_Chain chain;
-
-                chain = Blt_Chain_Create();
-                Blt_Tags_AppendTagsToChain(&graphPtr->axes.tags, scalePtr,
-                        chain);
-                for (link = Blt_Chain_FirstLink(chain); link != NULL; 
-                     link = Blt_Chain_NextLink(link)) {
-                    const char *tag;
-                    int isNew;
-
-                    tag = Blt_Chain_GetValue(link);
-                    Blt_CreateHashEntry(&selected, tag, &isNew);
-                }
-                Blt_Chain_Destroy(chain);
-            }
-        }
-        {
-            Blt_HashEntry *hPtr;
-            Blt_HashSearch hiter;
-
-            for (hPtr = Blt_FirstHashEntry(&selected, &hiter); hPtr != NULL;
-                 hPtr = Blt_NextHashEntry(&hiter)) {
-                objPtr = Tcl_NewStringObj(Blt_GetHashKey(&selected, hPtr), -1);
-                Tcl_ListObjAppendElement(interp, listObjPtr, objPtr);
-            }
-        }
-        Blt_DeleteHashTable(&selected);
-    }
-    Tcl_SetObjResult(interp, listObjPtr);
-    return TCL_OK;
- error:
-    Tcl_DecrRefCount(listObjPtr);
-    return TCL_ERROR;
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * TagSearchOp --
- *
- *      Returns the names of axis associated with the given tags.  The
- *      name returned will represent the union of tabs for all the given
- *      tags.
- *
- *      pathName axis tag search tag1 tag2 tag3...
- *
- *---------------------------------------------------------------------------
- */
-static int
-TagSearchOp(ClientData clientData, Tcl_Interp *interp, int objc,
-            Tcl_Obj *const *objv)
-{
-    Blt_HashTable selected;
-    Graph *graphPtr = clientData;
-    int i;
-        
-    Blt_InitHashTable(&selected, BLT_ONE_WORD_KEYS);
-    for (i = 4; i < objc; i++) {
-        const char *tag;
-
-        tag = Tcl_GetString(objv[i]);
-        if (strcmp(tag, "all") == 0) {
-            break;
-        } else {
-            Blt_Chain chain;
-
-            chain = Blt_Tags_GetItemList(&graphPtr->axes.tags, tag);
-            if (chain != NULL) {
-                Blt_ChainLink link;
-
-                for (link = Blt_Chain_FirstLink(chain); link != NULL; 
-                     link = Blt_Chain_NextLink(link)) {
-                    Axis *scalePtr;
-                    int isNew;
-                    
-                    scalePtr = Blt_Chain_GetValue(link);
-                    Blt_CreateHashEntry(&selected, (char *)scalePtr, &isNew);
-                }
-            }
-            continue;
-        }
-        Tcl_AppendResult(interp, "can't find a tag \"", tag, "\"",
-                         (char *)NULL);
-        goto error;
-    }
-    {
-        Blt_HashEntry *hPtr;
-        Blt_HashSearch iter;
-        Tcl_Obj *listObjPtr;
-
-        listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **) NULL);
-        for (hPtr = Blt_FirstHashEntry(&selected, &iter); hPtr != NULL; 
-             hPtr = Blt_NextHashEntry(&iter)) {
-            Axis *scalePtr;
-            Tcl_Obj *objPtr;
-
-            scalePtr = (Axis *)Blt_GetHashKey(&selected, hPtr);
-            objPtr = Tcl_NewStringObj(scalePtr->obj.name, -1);
-            Tcl_ListObjAppendElement(interp, listObjPtr, objPtr);
-        }
-        Tcl_SetObjResult(interp, listObjPtr);
-    }
-    Blt_DeleteHashTable(&selected);
-    return TCL_OK;
-
- error:
-    Blt_DeleteHashTable(&selected);
-    return TCL_ERROR;
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * TagSetOp --
- *
- *      Sets one or more tags for a given tab.  Tag names can't start with a
- *      digit (to distinquish them from node ids) and can't be a reserved tag
- *      ("all").
- *
- *      pathName axis tag set axisName tag1 tag2...
- *
- *---------------------------------------------------------------------------
- */
-static int
-TagSetOp(ClientData clientData, Tcl_Interp *interp, int objc,
-         Tcl_Obj *const *objv)
-{
-    AxisIterator iter;
-    Graph *graphPtr = clientData;
-    int i;
-
-    if (GetAxisIterator(interp, graphPtr, objv[4], &iter) != TCL_OK) {
-        return TCL_ERROR;
-    }
-    for (i = 5; i < objc; i++) {
-        const char *tag;
-        Axis *scalePtr;
-
-        tag = Tcl_GetString(objv[i]);
-        if (strcmp(tag, "all") == 0) {
-            Tcl_AppendResult(interp, "can't add reserved tag \"", tag, "\"",
-                             (char *)NULL);     
-            return TCL_ERROR;
-        }
-        for (scalePtr = FirstTaggedAxis(&iter); scalePtr != NULL; 
-             scalePtr = NextTaggedAxis(&iter)) {
-            Blt_Tags_AddItemToTag(&graphPtr->axes.tags, tag, scalePtr);
-        }    
-    }
-    return TCL_OK;
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * TagUnsetOp --
- *
- *      Removes one or more tags from a given axis. If a tag doesn't exist 
- *      or is a reserved tag ("all"), nothing will be done and no error
- *      message will be returned.
- *
- *      pathName axis tag unset axisName tagName...
- *
- *---------------------------------------------------------------------------
- */
-static int
-TagUnsetOp(ClientData clientData, Tcl_Interp *interp, int objc,
-       Tcl_Obj *const *objv)
-{
-    Axis *scalePtr;
-    AxisIterator iter;
-    Graph *graphPtr = clientData;
-
-    if (GetAxisIterator(interp, graphPtr, objv[4], &iter) != TCL_OK) {
-        return TCL_ERROR;
-    }
-    for (scalePtr = FirstTaggedAxis(&iter); scalePtr != NULL; 
-         scalePtr = NextTaggedAxis(&iter)) {
-        int i;
-
-        for (i = 5; i < objc; i++) {
-            const char *tag;
-
-            tag = Tcl_GetString(objv[i]);
-            Blt_Tags_RemoveItemFromTag(&graphPtr->axes.tags, tag, scalePtr);
-        }    
-    }
-    return TCL_OK;
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * TagOp --
- *
- *      This procedure is invoked to process tag operations.
- *
- * Results:
- *      A standard TCL result.
- *
- * Side Effects:
- *      See the user documentation.
- *
- *---------------------------------------------------------------------------
- */
-static Blt_OpSpec tagOps[] =
-{
-    {"add",      1, TagAddOp,      5, 0, "tagName ?axisName ...?",},
-    {"delete",   1, TagDeleteOp,   5, 0, "axisName ?tagName ...?",},
-    {"exists",   1, TagExistsOp,   5, 0, "axisName ?tagName ...?",},
-    {"forget",   1, TagForgetOp,   4, 0, "?tagName ...?",},
-    {"get",      1, TagGetOp,      5, 0, "axisName ?pattern ...?",},
-    {"names",    1, TagNamesOp,    4, 0, "?axisName ...?",},
-    {"search",   3, TagSearchOp,   4, 0, "?tagName ...?",},
-    {"set",      3, TagSetOp,      5, 0, "axisName ?tagName ...?",},
-    {"unset",    1, TagUnsetOp,    5, 0, "axisName ?tagName ...?",},
-};
-
-static int numTagOps = sizeof(tagOps) / sizeof(Blt_OpSpec);
-
-static int
-TagOp(ClientData clientData, Tcl_Interp *interp, int objc,
-      Tcl_Obj *const *objv)
-{
-    Tcl_ObjCmdProc *proc;
-    int result;
-
-    proc = Blt_GetOpFromObj(interp, numTagOps, tagOps, BLT_OP_ARG2,
-        objc, objv, 0);
-    if (proc == NULL) {
-        return TCL_ERROR;
-    }
-    result = (*proc)(clientData, interp, objc, objv);
-    return result;
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * AxisTransformOp --
- *
- *      Maps the given axis-value to a window coordinate.
- *
- * Results:
- *      Returns the window coordinate via interp->result.  If an error occurred,
- *      TCL_ERROR is returned and interp->result will contain an error message.
- *
- *---------------------------------------------------------------------------
- */
-static int
-AxisTransformOp(ClientData clientData, Tcl_Interp *interp, int objc, 
-                Tcl_Obj *const *objv)
-{
-    Graph *graphPtr = clientData;
-    Axis *scalePtr;
-
-    if (GetAxisFromObj(interp, graphPtr, objv[3], &scalePtr) != TCL_OK) {
-        return TCL_ERROR;
-    }
-    return TransformOp(scalePtr, interp, objc - 4, objv + 4);
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * AxisTypeOp --
- *
- *      This procedure returns a string representing the type of the
- *      axis.  The format of the string is x, y or z.
- *
- * Results:
- *      Always returns TCL_OK.  The interp->result field is
- *      the type of the axis.
- *
- *---------------------------------------------------------------------------
- */
-static int
-AxisTypeOp(ClientData clientData, Tcl_Interp *interp, int objc, 
-           Tcl_Obj *const *objv)
-{
-    Graph *graphPtr = clientData;
-    Axis *scalePtr;
-
-    if (GetAxisFromObj(interp, graphPtr, objv[3], &scalePtr) != TCL_OK) {
-        return TCL_ERROR;
-    }
-    return TypeOp(scalePtr, interp, objc - 4, objv + 4);
-}
-
-
-static int
-AxisViewOp(ClientData clientData, Tcl_Interp *interp, int objc,
-           Tcl_Obj *const *objv)
-{
-    Graph *graphPtr = clientData;
-    Axis *scalePtr;
-
-    if (GetAxisFromObj(interp, graphPtr, objv[3], &scalePtr) != TCL_OK) {
-        return TCL_ERROR;
-    }
-    return ViewOp(scalePtr, interp, objc - 4, objv + 4);
-}
-
-static Blt_OpSpec virtAxisOps[] = {
-    {"activate",     1, AxisActivateOp,     4, 4, "axisName"},
-    {"bind",         1, AxisBindOp,         3, 6, "bindTag sequence command"},
-    {"cget",         2, AxisCgetOp,         5, 5, "axisName option"},
-    {"configure",    2, AxisConfigureOp,    4, 0, "axisName ?option value?..."},
-    {"create",       2, AxisCreateOp,       4, 0, "axisName ?option value?..."},
-    {"deactivate",   3, AxisActivateOp,     4, 4, "axisName"},
-    {"delete",       3, AxisDeleteOp,       3, 0, "?axisName?..."},
-    {"focus",        1, AxisFocusOp,        3, 4, "?axisName?"},
-    {"get",          1, AxisGetOp,          4, 4, "name"},
-    {"invtransform", 1, AxisInvTransformOp, 5, 5, "axisName value"},
-    {"limits",       1, AxisLimitsOp,       4, 4, "axisName"},
-    {"margin",       1, AxisMarginOp,       4, 4, "axisName"},
-    {"names",        1, AxisNamesOp,        3, 0, "?pattern?..."},
-    {"tag",          2, TagOp,              2, 0, "args"},
-    {"transform",    2, AxisTransformOp,    5, 5, "axisName value"},
-    {"type",         2, AxisTypeOp,         4, 4, "axisName"},
-    {"view",         1, AxisViewOp,         4, 7, "axisName ?moveto fract? "
-        "?scroll number what?"},
-};
-static int numVirtAxisOps = sizeof(virtAxisOps) / sizeof(Blt_OpSpec);
-
-int
-Blt_VirtualAxisOp(ClientData clientData, Tcl_Interp *interp, int objc, 
-                  Tcl_Obj *const *objv)
-{
-    Tcl_ObjCmdProc *proc;
-    int result;
-
-    proc = Blt_GetOpFromObj(interp, numVirtAxisOps, virtAxisOps, BLT_OP_ARG2, 
-        objc, objv, 0);
-    if (proc == NULL) {
-        return TCL_ERROR;
-    }
-    result = (*proc) (clientData, interp, objc, objv);
-    return result;
-}
-
-int
-Blt_AxisOp(ClientData clientData, Tcl_Interp *interp, int margin, int objc,
-           Tcl_Obj *const *objv)
-{
-    Graph *graphPtr = clientData;
-    int result;
-    Tcl_ObjCmdProc *proc;
-
-    proc = Blt_GetOpFromObj(interp, numAxisOps, axisOps, BLT_OP_ARG2, 
-        objc, objv, 0);
-    if (proc == NULL) {
-        return TCL_ERROR;
-    }
-    if (proc == UseOp) {
-        lastMargin = margin;            /* Set global variable to the
-                                         * margin in the argument
-                                         * list. Needed only for UseOp. */
-        result = (*proc)(clientData, interp, objc - 3, objv + 3);
-    } else {
-        Axis *scalePtr;
-
-        scalePtr = FirstAxis(graphPtr->margins + margin);
-        if (scalePtr == NULL) {
-            return TCL_OK;
-        }
-        result = (*proc)(scalePtr, interp, objc - 3, objv + 3);
-    }
-    return result;
-}
-
-void
-Blt_MapAxes(Graph *graphPtr)
-{
-    int i;
-    
-    for (i = 0; i < 4; i++) {
-        Axis *scalePtr;
-        Margin *marginPtr;
-        float sum;
-        
-        marginPtr = graphPtr->margins + i;
-        /* Reset the margin offsets (stacked and layered). */
-        marginPtr->nextStackOffset = marginPtr->nextLayerOffset = 0;
-        sum = 0.0;
-        if (graphPtr->flags & STACK_AXES) {
-            /* For stacked axes figure out the sum of the weights.*/
-            for (scalePtr = FirstAxis(marginPtr); scalePtr != NULL; 
-                 scalePtr = NextAxis(scalePtr)) {
-                if (scalePtr->flags & (DELETED|HIDDEN)) {
-                    continue;           /* Ignore axes that aren't in use
-                                         * or have been deleted.  */
-                }
-                sum += scalePtr->weight;
-            }
-        }
-        for (scalePtr = FirstAxis(marginPtr); scalePtr != NULL; 
-             scalePtr = NextAxis(scalePtr)) {
-            if (scalePtr->flags & DELETED) {
-                continue;               /* Don't map axes that aren't being
-                                         * used or have been deleted. */
-            }
-            if (HORIZONTAL(marginPtr)) {
-                scalePtr->screenMin = graphPtr->hOffset;
-                scalePtr->width = graphPtr->x2 - graphPtr->x1;
-                scalePtr->screenRange = graphPtr->hRange;
-            } else {
-                scalePtr->screenMin = graphPtr->vOffset;
-                scalePtr->height = graphPtr->y2 - graphPtr->y1;
-                scalePtr->screenRange = graphPtr->vRange;
-            }
-            scalePtr->screenScale = 1.0 / scalePtr->screenRange;
-            if (scalePtr->flags & HIDDEN) {
-                continue;
-            }
-            if (graphPtr->flags & STACK_AXES) {
-                if (scalePtr->reqNumMajorTicks <= 0) {
-                    scalePtr->reqNumMajorTicks = 4;
-                }
-                MapStackedAxis(scalePtr, sum);
-            } else {
-                if (scalePtr->reqNumMajorTicks <= 0) {
-                    scalePtr->reqNumMajorTicks = 4;
-                }
-                MapAxis(scalePtr);
-                /* The next axis will start after the current axis. */
-                marginPtr->nextLayerOffset += HORIZONTAL(scalePtr) ?
-                    scalePtr->height : scalePtr->width;
-            }
-        }
-    }
-}
-
-void
-Blt_DrawAxes(Graph *graphPtr, Drawable drawable)
-{
-    int i;
-
-    for (i = 0; i < 4; i++) {
-        Axis *scalePtr;
-        Margin *marginPtr;
-
-        marginPtr = graphPtr->margins + i;
-        for (scalePtr = FirstAxis(marginPtr); scalePtr != NULL; 
-             scalePtr = NextAxis(scalePtr)) {
-            if (scalePtr->flags & (DELETED|HIDDEN)) {
-                continue;
-            }
-            DrawAxis(scalePtr, drawable);
-        }
-    }
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * Blt_DrawAxisLimits --
- *
- *      Draws the min/max values of the axis in the plotting area.  The
- *      text strings are formatted according to the "sprintf" format
- *      descriptors in the limitsFmts array.
- *
- * Results:
- *      None.
- *
- * Side Effects:
- *      Draws the numeric values of the axis limits into the outer regions
- *      of the plotting area.
- *
- *---------------------------------------------------------------------------
- */
-void
-Blt_DrawAxisLimits(Graph *graphPtr, Drawable drawable)
-{
-    Blt_HashEntry *hPtr;
-    Blt_HashSearch cursor;
-    char minString[200], maxString[200];
-    int vMin, hMin, vMax, hMax;
-
-#define SPACING 8
-    vMin = vMax = graphPtr->x1 + graphPtr->padLeft + 2;
-    hMin = hMax = graphPtr->y2 - graphPtr->padBottom - 2;   /* Offsets */
-
-    for (hPtr = Blt_FirstHashEntry(&graphPtr->axes.nameTable, &cursor);
-        hPtr != NULL; hPtr = Blt_NextHashEntry(&cursor)) {
-        Axis *scalePtr;
-        Dim2d textDim;
-        Tcl_Obj **objv;
-        char *minPtr, *maxPtr;
-        const char *minFmt, *maxFmt;
-        int objc;
-        
-        scalePtr = Blt_GetHashValue(hPtr);
-        if (scalePtr->flags & DELETED) {
-            continue;                   /* Axis has been deleted. */
-        } 
-        if (scalePtr->limitsFmtsObjPtr == NULL) {
-            continue;                   /* No limits format specified for
-                                         * this axis. */
-        }
-        if (scalePtr->marginPtr == NULL) {
-            continue;                   /* Axis is not associated with any
-                                         * margin. */
-        }
-        Tcl_ListObjGetElements(NULL,scalePtr->limitsFmtsObjPtr, &objc, &objv);
-        minPtr = maxPtr = NULL;
-        minFmt = maxFmt = Tcl_GetString(objv[0]);
-        if (objc > 1) {
-            maxFmt = Tcl_GetString(objv[1]);
-        }
-        if (minFmt[0] != '\0') {
-            minPtr = minString;
-            Blt_FmtString(minString, 200, minFmt, scalePtr->tickMin);
-        }
-        if (maxFmt[0] != '\0') {
-            maxPtr = maxString;
-            Blt_FmtString(maxString, 200, maxFmt, scalePtr->tickMax);
-        }
-        if (scalePtr->flags & DECREASING) {
-            char *tmp;
-
-            tmp = minPtr, minPtr = maxPtr, maxPtr = tmp;
-        }
-        if (maxPtr != NULL) {
-            if (HORIZONTAL(scalePtr->marginPtr)) {
-                Blt_Ts_SetAngle(scalePtr->limitsTextStyle, 90.0);
-                Blt_Ts_SetAnchor(scalePtr->limitsTextStyle, TK_ANCHOR_SE);
-                Blt_DrawText2(graphPtr->tkwin, drawable, maxPtr,
-                    &scalePtr->limitsTextStyle, graphPtr->x2, hMax, &textDim);
-                hMax -= (textDim.height + SPACING);
-            } else {
-                Blt_Ts_SetAngle(scalePtr->limitsTextStyle, 0.0);
-                Blt_Ts_SetAnchor(scalePtr->limitsTextStyle, TK_ANCHOR_NW);
-                Blt_DrawText2(graphPtr->tkwin, drawable, maxPtr,
-                    &scalePtr->limitsTextStyle, vMax, graphPtr->y1, &textDim);
-                vMax += (textDim.width + SPACING);
-            }
-        }
-        if (minPtr != NULL) {
-            Blt_Ts_SetAnchor(scalePtr->limitsTextStyle, TK_ANCHOR_SW);
-            if (HORIZONTAL(scalePtr->marginPtr)) {
-                Blt_Ts_SetAngle(scalePtr->limitsTextStyle, 90.0);
-                Blt_DrawText2(graphPtr->tkwin, drawable, minPtr,
-                    &scalePtr->limitsTextStyle, graphPtr->x1, hMin, &textDim);
-                hMin -= (textDim.height + SPACING);
-            } else {
-                Blt_Ts_SetAngle(scalePtr->limitsTextStyle, 0.0);
-                Blt_DrawText2(graphPtr->tkwin, drawable, minPtr,
-                    &scalePtr->limitsTextStyle, vMin, graphPtr->y2, &textDim);
-                vMin += (textDim.width + SPACING);
-            }
-        }
-    } /* Loop on axes */
-}
-
-void
-Blt_AxisLimitsToPostScript(Graph *graphPtr, Blt_Ps ps)
-{
-    Blt_HashEntry *hPtr;
-    Blt_HashSearch cursor;
-    double vMin, hMin, vMax, hMax;
-    char string[200];
-
-#define SPACING 8
-    vMin = vMax = graphPtr->x1 + graphPtr->padLeft + 2;
-    hMin = hMax = graphPtr->y2 - graphPtr->padBottom - 2;   /* Offsets */
-    for (hPtr = Blt_FirstHashEntry(&graphPtr->axes.nameTable, &cursor);
-         hPtr != NULL; hPtr = Blt_NextHashEntry(&cursor)) {
-        Axis *scalePtr;
-        Tcl_Obj **objv;
-        const char *minFmt, *maxFmt;
-        int objc;
-        unsigned int textWidth, textHeight;
-
-        scalePtr = Blt_GetHashValue(hPtr);
-        if (scalePtr->flags & DELETED) {
-            continue;                   /* Axis has been deleted. */
-        } 
-        if (scalePtr->limitsFmtsObjPtr == NULL) {
-            continue;                   /* No limits format specified for
-                                         * the axis. */
-        }
-        if (scalePtr->marginPtr == NULL) {
-            continue;                   /* Axis is not associated with any
-                                         * margin. */
-        }
-        Tcl_ListObjGetElements(NULL, scalePtr->limitsFmtsObjPtr, &objc, &objv);
-        minFmt = maxFmt = Tcl_GetString(objv[0]);
-        if (objc > 1) {
-            maxFmt = Tcl_GetString(objv[1]);
-        }
-        if (*maxFmt != '\0') {
-            Blt_FmtString(string, 200, maxFmt, scalePtr->tickMax);
-            Blt_GetTextExtents(scalePtr->tickFont, 0, string, -1, &textWidth,
-                &textHeight);
-            if ((textWidth > 0) && (textHeight > 0)) {
-                if (scalePtr->obj.classId == CID_AXIS_X) {
-                    Blt_Ts_SetAngle(scalePtr->limitsTextStyle, 90.0);
-                    Blt_Ts_SetAnchor(scalePtr->limitsTextStyle, TK_ANCHOR_SE);
-                    Blt_Ps_DrawText(ps, string, &scalePtr->limitsTextStyle, 
-                        (double)graphPtr->x2, hMax);
-                    hMax -= (textWidth + SPACING);
-                } else {
-                    Blt_Ts_SetAngle(scalePtr->limitsTextStyle, 0.0);
-                    Blt_Ts_SetAnchor(scalePtr->limitsTextStyle, TK_ANCHOR_NW);
-                    Blt_Ps_DrawText(ps, string, &scalePtr->limitsTextStyle,
-                        vMax, (double)graphPtr->y1);
-                    vMax += (textWidth + SPACING);
-                }
-            }
-        }
-        if (*minFmt != '\0') {
-            Blt_FmtString(string, 200, minFmt, scalePtr->tickMin);
-            Blt_GetTextExtents(scalePtr->tickFont, 0, string, -1, &textWidth,
-                &textHeight);
-            if ((textWidth > 0) && (textHeight > 0)) {
-                Blt_Ts_SetAnchor(scalePtr->limitsTextStyle, TK_ANCHOR_SW);
-                if (scalePtr->obj.classId == CID_AXIS_X) {
-                    Blt_Ts_SetAngle(scalePtr->limitsTextStyle, 90.0);
-                    Blt_Ps_DrawText(ps, string, &scalePtr->limitsTextStyle, 
-                        (double)graphPtr->x1, hMin);
-                    hMin -= (textWidth + SPACING);
-                } else {
-                    Blt_Ts_SetAngle(scalePtr->limitsTextStyle, 0.0);
-                    Blt_Ps_DrawText(ps, string, &scalePtr->limitsTextStyle, 
-                        vMin, (double)graphPtr->y2);
-                    vMin += (textWidth + SPACING);
-                }
-            }
-        }
-    }
-}
-
-Axis *
-Blt_GetFirstAxis(Blt_Chain chain)
-{
-    Blt_ChainLink link;
-
-    link = Blt_Chain_FirstLink(chain);
-    if (link == NULL) {
-        return NULL;
-    }
-    return Blt_Chain_GetValue(link);
-}
-
-Axis *
-Blt_NearestAxis(Graph *graphPtr, int x, int y)
-{
-    Blt_HashEntry *hPtr;
-    Blt_HashSearch cursor;
-    
-    for (hPtr = Blt_FirstHashEntry(&graphPtr->axes.nameTable, &cursor); 
-         hPtr != NULL; hPtr = Blt_NextHashEntry(&cursor)) {
-        Axis *scalePtr;
-
-        scalePtr = Blt_GetHashValue(hPtr);
-        if ((scalePtr->marginPtr == NULL) ||
-            (scalePtr->flags & (DELETED|HIDDEN))) {
-            continue;
-        }
-        if (scalePtr->flags & TICKLABELS) {
-            Blt_ChainLink link;
-
-            for (link = Blt_Chain_FirstLink(scalePtr->tickLabels); link != NULL; 
-                 link = Blt_Chain_NextLink(link)) {     
-                TickLabel *labelPtr;
-                Point2d t;
-                double rw, rh;
-                Point2d bbox[5];
-
-                labelPtr = Blt_Chain_GetValue(link);
-                Blt_GetBoundingBox((double)labelPtr->width, 
-                        (double)labelPtr->height, 
-                        scalePtr->tickAngle, &rw, &rh, bbox);
-                t = Blt_AnchorPoint(labelPtr->anchorPos.x, 
-                        labelPtr->anchorPos.y, rw, rh, scalePtr->tickAnchor);
-                t.x = x - t.x - (rw * 0.5);
-                t.y = y - t.y - (rh * 0.5);
-
-                bbox[4] = bbox[0];
-                if (Blt_PointInPolygon(&t, bbox, 5)) {
-                    scalePtr->detail = "label";
-                    return scalePtr;
-                }
-            }
-        }
-        if (scalePtr->title != NULL) {   /* and then the title string. */
-            Point2d bbox[5];
-            Point2d t;
-            double rw, rh;
-            unsigned int w, h;
-
-            Blt_GetTextExtents(scalePtr->titleFont, 0, scalePtr->title,-1,&w,&h);
-            Blt_GetBoundingBox((double)w, (double)h, scalePtr->titleAngle, 
-                &rw, &rh, bbox);
-            t = Blt_AnchorPoint(scalePtr->titlePos.x, scalePtr->titlePos.y, 
-                rw, rh, scalePtr->titleAnchor);
-            /* Translate the point so that the 0,0 is the upper left 
-             * corner of the bounding box.  */
-            t.x = x - t.x - (rw * 0.5);
-            t.y = y - t.y - (rh * 0.5);
-            
-            bbox[4] = bbox[0];
-            if (Blt_PointInPolygon(&t, bbox, 5)) {
-                scalePtr->detail = "title";
-                return scalePtr;
-            }
-        }
-        if (scalePtr->tickLineWidth > 0) {   /* Check for the axis region */
-            if ((x <= scalePtr->right) && (x >= scalePtr->left) && 
-                (y <= scalePtr->bottom) && (y >= scalePtr->top)) {
-                scalePtr->detail = "line";
-                return scalePtr;
-            }
-        }
-    }
-    return NULL;
-}
- 
-ClientData
-Blt_MakeAxisTag(Graph *graphPtr, const char *tagName)
-{
-    Blt_HashEntry *hPtr;
-    int isNew;
-
-    hPtr = Blt_CreateHashEntry(&graphPtr->axes.bindTagTable, tagName, &isNew);
-    return Blt_GetHashKey(&graphPtr->axes.bindTagTable, hPtr);
-}
-
-#include <time.h>
-#include <sys/time.h>
-
-#define SECONDS_SECOND        (1)
-#define SECONDS_MINUTE        (60)
-#define SECONDS_HOUR          (SECONDS_MINUTE * 60)
-#define SECONDS_DAY           (SECONDS_HOUR * 24)
-#define SECONDS_WEEK          (SECONDS_DAY * 7)
-#define SECONDS_MONTH         (SECONDS_DAY * 30)
-#define SECONDS_YEAR          (SECONDS_DAY * 365)
-
-static const int numDaysMonth[2][13] = {
-    {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31, 31},
-    {31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31, 31}
-} ;
-static const int numDaysYear[2] = { 365, 366 };
-
-#   define EPOCH           1970
-#   define EPOCH_WDAY      4            /* Thursday. */
-
-static long
-NumberDaysFromEpoch(int year)
-{
-    int y;
-    long numDays;
-
-    numDays = 0;
-    if (year >= EPOCH) {
-        for (y = EPOCH; y < year; y++) {
-            numDays += numDaysYear[IsLeapYear(y)];
-        }
-    } else {
-        for (y = year; y < EPOCH; y++)
-            numDays -= numDaysYear[IsLeapYear(y)];
-    }
-    return numDays;
+    return UNITS_SUBSECONDS;
 }
 
 static double
-TimeFloor(Axis *scalePtr, double min, TimeUnits units, Blt_DateTime *datePtr)
+TimeFloor(Scale *scalePtr, double min, TimeUnits units, Blt_DateTime *datePtr)
 {
     double seconds;
     int mday;
@@ -5818,7 +2291,7 @@ TimeFloor(Axis *scalePtr, double min, TimeUnits units, Blt_DateTime *datePtr)
 }
 
 static double
-TimeCeil(Axis *scalePtr, double max, TimeUnits units, Blt_DateTime *datePtr)
+TimeCeil(Scale *scalePtr, double max, TimeUnits units, Blt_DateTime *datePtr)
 {
     double seconds;
 
@@ -5851,37 +2324,23 @@ TimeCeil(Axis *scalePtr, double max, TimeUnits units, Blt_DateTime *datePtr)
     return TimeFloor(scalePtr, seconds, units, datePtr);
 }
 
-static int 
-GetMajorTimeUnits(double min, double max)
-{
-    double range;
 
-    range = max - min;
-    if (range <= 0.0) {
-        return -1;
+static long
+NumberDaysFromEpoch(int year)
+{
+    int y;
+    long numDays;
+
+    numDays = 0;
+    if (year >= EPOCH) {
+        for (y = EPOCH; y < year; y++) {
+            numDays += numDaysYear[IsLeapYear(y)];
+        }
+    } else {
+        for (y = year; y < EPOCH; y++)
+            numDays -= numDaysYear[IsLeapYear(y)];
     }
-    if (range > (SECONDS_YEAR * 1.5)) {
-        return UNITS_YEARS;
-    } 
-    if (range > (SECONDS_MONTH * 2.1)) {
-        return UNITS_MONTHS;
-    } 
-    if (range > (SECONDS_WEEK * 2)) {
-        return UNITS_WEEKS;
-    } 
-    if (range > (SECONDS_DAY * 2)) {
-        return UNITS_DAYS;
-    }
-    if (range > (SECONDS_HOUR * 2)) {
-        return UNITS_HOURS;
-    }
-    if (range > (SECONDS_MINUTE * 2)) {
-        return UNITS_MINUTES;
-    }
-    if (range > (SECONDS_SECOND * 2)) {
-        return UNITS_SECONDS;
-    }
-    return UNITS_SUBSECONDS;
+    return numDays;
 }
 
 static void
@@ -5894,8 +2353,7 @@ YearTicks(Scale *scalePtr)
     double axisMin, axisMax;            /* Seconds. */
     double numYears;
 
-    scalePtr->major.ticks.axisScale = scalePtr->minor.ticks.axisScale = 
-        AXIS_TIME;
+    scalePtr->major.axisScale = scalePtr->minor.axisScale = AXIS_TIME;
     tickMin = TimeFloor(scalePtr, scalePtr->outerLeft, UNITS_YEARS, &date1);
     tickMax = TimeCeil(scalePtr, scalePtr->outerRight, UNITS_YEARS, &date2);
     step = 1.0;
@@ -5904,7 +2362,7 @@ YearTicks(Scale *scalePtr)
         long minDays, maxDays;
         double range;
 
-        scalePtr->major.ticks.timeFormat = FMT_YEARS10;
+        scalePtr->major.timeFormat = FMT_YEARS10;
         range = numYears;
         range = NiceNum(range, 0);
         step = NiceNum(range / scalePtr->reqNumMajorTicks, 1);
@@ -5917,14 +2375,14 @@ YearTicks(Scale *scalePtr)
         maxDays  = NumberDaysFromEpoch((int)tickMax);
         tickMin = minDays * SECONDS_DAY;
         tickMax = maxDays * SECONDS_DAY;
-        scalePtr->major.ticks.year = tickMin;
-        scalePtr->minor.ticks.timeUnits = UNITS_YEARS;
+        scalePtr->major.year = tickMin;
+        scalePtr->minor.timeUnits = UNITS_YEARS;
         if (step > 5) {
-            scalePtr->minor.ticks.numSteps = 1;
-            scalePtr->minor.ticks.step = step / 2;
+            scalePtr->minor.numSteps = 1;
+            scalePtr->minor.step = step / 2;
         } else {
-            scalePtr->minor.ticks.step = 1; /* Years */
-            scalePtr->minor.ticks.numSteps = step - 1;
+            scalePtr->minor.step = 1; /* Years */
+            scalePtr->minor.numSteps = step - 1;
         }
     } else {
         numTicks = numYears + 1;
@@ -5933,20 +2391,20 @@ YearTicks(Scale *scalePtr)
         tickMin = NumberDaysFromEpoch(date1.year) * SECONDS_DAY;
         tickMax = NumberDaysFromEpoch(date2.year) * SECONDS_DAY;
         
-        scalePtr->major.ticks.year = date1.year;
+        scalePtr->major.year = date1.year;
         if (numYears > 5) {
-            scalePtr->major.ticks.timeFormat = FMT_YEARS5;
+            scalePtr->major.timeFormat = FMT_YEARS5;
 
-            scalePtr->minor.ticks.step = (SECONDS_YEAR+1) / 2; /* 1/2 year */
-            scalePtr->minor.ticks.numSteps = 1;  /* 3 - 2 */
-            scalePtr->minor.ticks.timeUnits = UNITS_YEARS;
+            scalePtr->minor.step = (SECONDS_YEAR+1) / 2; /* 1/2 year */
+            scalePtr->minor.numSteps = 1;  /* 3 - 2 */
+            scalePtr->minor.timeUnits = UNITS_YEARS;
         } else {
-            scalePtr->major.ticks.timeFormat = FMT_YEARS1;
+            scalePtr->major.timeFormat = FMT_YEARS1;
      
-            scalePtr->minor.ticks.step = 0; /* Months */
-            scalePtr->minor.ticks.numSteps = 11;  /* 12 - 1 */
-            scalePtr->minor.ticks.timeUnits = UNITS_MONTHS;
-            scalePtr->minor.ticks.month = date1.year;
+            scalePtr->minor.step = 0; /* Months */
+            scalePtr->minor.numSteps = 11;  /* 12 - 1 */
+            scalePtr->minor.timeUnits = UNITS_MONTHS;
+            scalePtr->minor.month = date1.year;
         } 
     }
 
@@ -5959,13 +2417,13 @@ YearTicks(Scale *scalePtr)
     SetAxisRange(&scalePtr->tickRange, axisMin, axisMax);
     scalePtr->tickMin = axisMin;
     scalePtr->tickMax = axisMax;
-    scalePtr->major.ticks.timeUnits = UNITS_YEARS;
-    scalePtr->major.ticks.fmt = "%Y";
-    scalePtr->major.ticks.axisScale = AXIS_TIME;
-    scalePtr->major.ticks.range = tickMax - tickMin;
-    scalePtr->major.ticks.initial = tickMin;
-    scalePtr->major.ticks.numSteps = numTicks;
-    scalePtr->major.ticks.step = step;
+    scalePtr->major.timeUnits = UNITS_YEARS;
+    scalePtr->major.fmt = "%Y";
+    scalePtr->major.axisScale = AXIS_TIME;
+    scalePtr->major.range = tickMax - tickMin;
+    scalePtr->major.initial = tickMin;
+    scalePtr->major.numSteps = numTicks;
+    scalePtr->major.step = step;
 }
 
 static void
@@ -5996,23 +2454,23 @@ MonthTicks(Scale *scalePtr)
     scalePtr->tickMin = axisMin;
     scalePtr->tickMax = axisMax;
 
-    scalePtr->major.ticks.initial = tickMin;
-    scalePtr->major.ticks.numSteps = numTicks;
-    scalePtr->major.ticks.step = step;
-    scalePtr->major.ticks.range = tickMax - tickMin;
-    scalePtr->major.ticks.isLeapYear = left.isLeapYear;
-    scalePtr->major.ticks.fmt = "%h\n%Y";
-    scalePtr->major.ticks.month = left.mon;
-    scalePtr->major.ticks.year = left.year;
-    scalePtr->major.ticks.timeUnits = UNITS_MONTHS;
-    scalePtr->major.ticks.axisScale = AXIS_TIME;
+    scalePtr->major.initial = tickMin;
+    scalePtr->major.numSteps = numTicks;
+    scalePtr->major.step = step;
+    scalePtr->major.range = tickMax - tickMin;
+    scalePtr->major.isLeapYear = left.isLeapYear;
+    scalePtr->major.fmt = "%h\n%Y";
+    scalePtr->major.month = left.mon;
+    scalePtr->major.year = left.year;
+    scalePtr->major.timeUnits = UNITS_MONTHS;
+    scalePtr->major.axisScale = AXIS_TIME;
     
-    scalePtr->minor.ticks.numSteps = 5;
-    scalePtr->minor.ticks.step = SECONDS_WEEK;
-    scalePtr->minor.ticks.month = left.mon;
-    scalePtr->minor.ticks.year = left.year;
-    scalePtr->minor.ticks.timeUnits = UNITS_WEEKS;
-    scalePtr->minor.ticks.axisScale = AXIS_TIME;
+    scalePtr->minor.numSteps = 5;
+    scalePtr->minor.step = SECONDS_WEEK;
+    scalePtr->minor.month = left.mon;
+    scalePtr->minor.year = left.year;
+    scalePtr->minor.timeUnits = UNITS_WEEKS;
+    scalePtr->minor.axisScale = AXIS_TIME;
 
 }
 
@@ -6068,17 +2526,17 @@ WeekTicks(Scale *scalePtr)
     scalePtr->tickMin = axisMin;
     scalePtr->tickMax = axisMax;
     
-    scalePtr->major.ticks.step = step;
-    scalePtr->major.ticks.initial = tickMin;
-    scalePtr->major.ticks.numSteps = numTicks;
-    scalePtr->major.ticks.timeUnits = UNITS_WEEKS;
-    scalePtr->major.ticks.range = tickMax - tickMin;
-    scalePtr->major.ticks.fmt = "%h %d";
-    scalePtr->major.ticks.axisScale = AXIS_TIME;
-    scalePtr->minor.ticks.step = SECONDS_DAY;
-    scalePtr->minor.ticks.numSteps = 6;  
-    scalePtr->minor.ticks.timeUnits = UNITS_DAYS;
-    scalePtr->minor.ticks.axisScale = AXIS_TIME;
+    scalePtr->major.step = step;
+    scalePtr->major.initial = tickMin;
+    scalePtr->major.numSteps = numTicks;
+    scalePtr->major.timeUnits = UNITS_WEEKS;
+    scalePtr->major.range = tickMax - tickMin;
+    scalePtr->major.fmt = "%h %d";
+    scalePtr->major.axisScale = AXIS_TIME;
+    scalePtr->minor.step = SECONDS_DAY;
+    scalePtr->minor.numSteps = 6;  
+    scalePtr->minor.timeUnits = UNITS_DAYS;
+    scalePtr->minor.axisScale = AXIS_TIME;
 }
 
 
@@ -6116,18 +2574,18 @@ DayTicks(Scale *scalePtr)
     scalePtr->tickMin = axisMin;
     scalePtr->tickMax = axisMax;
 
-    scalePtr->major.ticks.step = step;
-    scalePtr->major.ticks.initial = tickMin;
-    scalePtr->major.ticks.numSteps = numTicks;
-    scalePtr->major.ticks.timeUnits = UNITS_DAYS;
-    scalePtr->major.ticks.range = tickMax - tickMin;
-    scalePtr->major.ticks.axisScale = SCALE_TIME;
-    scalePtr->major.ticks.fmt = "%h %d";
-    scalePtr->minor.ticks.step = SECONDS_HOUR * 6;
-    scalePtr->minor.ticks.initial = 0;
-    scalePtr->minor.ticks.numSteps = 2;  /* 6 - 2 */
-    scalePtr->minor.ticks.timeUnits = UNITS_HOURS;
-    scalePtr->minor.ticks.axisScale = AXIS_TIME;
+    scalePtr->major.step = step;
+    scalePtr->major.initial = tickMin;
+    scalePtr->major.numSteps = numTicks;
+    scalePtr->major.timeUnits = UNITS_DAYS;
+    scalePtr->major.range = tickMax - tickMin;
+    scalePtr->major.axisScale = SCALE_TIME;
+    scalePtr->major.fmt = "%h %d";
+    scalePtr->minor.step = SECONDS_HOUR * 6;
+    scalePtr->minor.initial = 0;
+    scalePtr->minor.numSteps = 2;  /* 6 - 2 */
+    scalePtr->minor.timeUnits = UNITS_HOURS;
+    scalePtr->minor.axisScale = AXIS_TIME;
 }
 
 /* 
@@ -6179,18 +2637,18 @@ HourTicks(Scale *scalePtr)
     scalePtr->tickMin = axisMin;
     scalePtr->tickMax = axisMax;
 
-    scalePtr->major.ticks.step = step;
-    scalePtr->major.ticks.initial = tickMin;
-    scalePtr->major.ticks.numSteps = numTicks;
-    scalePtr->major.ticks.range = tickMax - tickMin;
-    scalePtr->major.ticks.fmt = "%H:%M\n%h %d";
-    scalePtr->major.ticks.timeUnits = UNITS_HOURS;
-    scalePtr->major.ticks.axisScale = AXIS_TIME;
+    scalePtr->major.step = step;
+    scalePtr->major.initial = tickMin;
+    scalePtr->major.numSteps = numTicks;
+    scalePtr->major.range = tickMax - tickMin;
+    scalePtr->major.fmt = "%H:%M\n%h %d";
+    scalePtr->major.timeUnits = UNITS_HOURS;
+    scalePtr->major.axisScale = AXIS_TIME;
 
-    scalePtr->minor.ticks.step = step / 4;
-    scalePtr->minor.ticks.numSteps = 4;  /* 6 - 2 */
-    scalePtr->minor.ticks.timeUnits = UNITS_MINUTES;
-    scalePtr->minor.ticks.axisScale = AXIS_TIME;
+    scalePtr->minor.step = step / 4;
+    scalePtr->minor.numSteps = 4;  /* 6 - 2 */
+    scalePtr->minor.timeUnits = UNITS_MINUTES;
+    scalePtr->minor.axisScale = AXIS_TIME;
 }
 
 /* 
@@ -6233,18 +2691,18 @@ MinuteTicks(Scale *scalePtr)
     scalePtr->tickMin = axisMin;
     scalePtr->tickMax = axisMax;
 
-    scalePtr->major.ticks.step = step;
-    scalePtr->major.ticks.initial = tickMin;
-    scalePtr->major.ticks.numSteps = numTicks;
-    scalePtr->major.ticks.timeUnits = UNITS_MINUTES;
-    scalePtr->major.ticks.axisScale = AXIS_TIME;
-    scalePtr->major.ticks.fmt = "%H:%M";
-    scalePtr->major.ticks.range = tickMax - tickMin;
+    scalePtr->major.step = step;
+    scalePtr->major.initial = tickMin;
+    scalePtr->major.numSteps = numTicks;
+    scalePtr->major.timeUnits = UNITS_MINUTES;
+    scalePtr->major.axisScale = AXIS_TIME;
+    scalePtr->major.fmt = "%H:%M";
+    scalePtr->major.range = tickMax - tickMin;
 
-    scalePtr->minor.ticks.step = step / (scalePtr->reqNumMinorTicks - 1);
-    scalePtr->minor.ticks.numSteps = scalePtr->reqNumMinorTicks;
-    scalePtr->minor.ticks.timeUnits = UNITS_MINUTES;
-    scalePtr->minor.ticks.axisScale = AXIS_TIME;
+    scalePtr->minor.step = step / (scalePtr->reqNumMinorTicks - 1);
+    scalePtr->minor.numSteps = scalePtr->reqNumMinorTicks;
+    scalePtr->minor.timeUnits = UNITS_MINUTES;
+    scalePtr->minor.axisScale = AXIS_TIME;
 }
 
 /* 
@@ -6286,8 +2744,8 @@ SecondTicks(Scale *scalePtr)
     axisMax = tickMax = UCEIL(scalePtr->outerRight, step);
     numTicks = ROUND((tickMax - tickMin) / step) + 1;
     if (scalePtr->flags & TIGHT) {
-        scaleMin = scalePtr->outerLeft;
-        scaleMax = scalePtr->outerRight;
+        axisMin = scalePtr->outerLeft;
+        axisMax = scalePtr->outerRight;
     }
     SetAxisRange(&scalePtr->tickRange, axisMin, axisMax);
     scalePtr->tickMin = axisMin;
@@ -6295,17 +2753,17 @@ SecondTicks(Scale *scalePtr)
 
     scalePtr->tickMin = axisMin;
     scalePtr->tickMax = axisMax;
-    scalePtr->major.ticks.initial = tickMin;
-    scalePtr->major.ticks.numSteps = numTicks;
-    scalePtr->major.ticks.step = step;
-    scalePtr->major.ticks.fmt = "%H:%M:%s";
-    scalePtr->major.ticks.timeUnits = UNITS_SECONDS;
-    scalePtr->major.ticks.axisScale = AXIS_TIME;
-    scalePtr->major.ticks.range = tickMax - tickMin;
+    scalePtr->major.initial = tickMin;
+    scalePtr->major.numSteps = numTicks;
+    scalePtr->major.step = step;
+    scalePtr->major.fmt = "%H:%M:%s";
+    scalePtr->major.timeUnits = UNITS_SECONDS;
+    scalePtr->major.axisScale = AXIS_TIME;
+    scalePtr->major.range = tickMax - tickMin;
 
-    scalePtr->minor.ticks.step = 1.0 / (double)scalePtr->reqNumMinorTicks;
-    scalePtr->minor.ticks.numSteps = scalePtr->reqNumMinorTicks - 1;
-    scalePtr->minor.ticks.axisScale = AXIS_LINEAR;
+    scalePtr->minor.step = 1.0 / (double)scalePtr->reqNumMinorTicks;
+    scalePtr->minor.numSteps = scalePtr->reqNumMinorTicks - 1;
+    scalePtr->minor.axisScale = AXIS_LINEAR;
 }
 
 /*
@@ -6356,24 +2814,13 @@ TimeScaleAxis(Scale *scalePtr)
         break;
     case UNITS_SUBSECONDS:
         LinearScaleAxis(scalePtr);
-        scalePtr->major.ticks.axisScale = AXIS_TIME;
-        scalePtr->major.ticks.timeUnits = units;
+        scalePtr->major.axisScale = AXIS_TIME;
+        scalePtr->major.timeUnits = units;
         break;
     default:
         Blt_Panic("unknown time units");
     }
 }
-
-static double logTable[] = {
-    0.301029995663981,                  /* 1 */
-    0.477121254719662,                  /* 2 */
-    0.602059991327962,                  /* 3 */
-    0.698970004336019,                  /* 4 */
-    0.778151250383644,                  /* 5 */
-    0.845098040014257,                  /* 6 */
-    0.903089986991944,                  /* 7 */
-    0.954242509439325,                  /* 8 */
-};
 
 
 static Tick
@@ -6382,7 +2829,7 @@ FirstMajorTick(Scale *scalePtr)
     Ticks *ticksPtr;
     Tick tick;
 
-    ticksPtr = &scalePtr->major.ticks;
+    ticksPtr = &scalePtr->major;
     ticksPtr->index = 0;
     ticksPtr->numDaysFromInitial = 0;
     tick.isValid = FALSE;
@@ -6408,9 +2855,9 @@ FirstMajorTick(Scale *scalePtr)
             break;
         case UNITS_MONTHS:
             if (ticksPtr->numSteps <= 3) {
-                scalePtr->minor.ticks.numSteps = 
+                scalePtr->minor.numSteps = 
                     numDaysMonth[ticksPtr->isLeapYear][ticksPtr->month];  
-                scalePtr->minor.ticks.step = SECONDS_DAY;
+                scalePtr->minor.step = SECONDS_DAY;
             } 
             break;
         default:
@@ -6444,7 +2891,7 @@ NextMajorTick(Scale *scalePtr)
     Ticks *ticksPtr;
     Tick tick;
 
-    ticksPtr = &scalePtr->major.ticks;
+    ticksPtr = &scalePtr->major;
     ticksPtr->index++;
     tick.isValid = FALSE;
     tick.value = Blt_NaN();
@@ -6560,7 +3007,7 @@ FirstMinorTick(Scale *scalePtr)
     Ticks *ticksPtr;
     Tick tick;
 
-    ticksPtr = &scalePtr->minor.ticks;
+    ticksPtr = &scalePtr->minor;
     ticksPtr->numDaysFromInitial = 0;
     ticksPtr->index = 0;
     tick.isValid = FALSE;
@@ -6659,7 +3106,7 @@ NextMinorTick(Scale *scalePtr)
     Ticks *ticksPtr;
     Tick tick;
 
-    ticksPtr = &scalePtr->minor.ticks;
+    ticksPtr = &scalePtr->minor;
     ticksPtr->index++;
     tick.isValid = FALSE;
     tick.value = Blt_NaN();
@@ -6740,7 +3187,575 @@ NextMinorTick(Scale *scalePtr)
 /*
  *---------------------------------------------------------------------------
  *
- * ConfigureTabset --
+ * GetAxisGeometry --
+ *
+ * Results:
+ *      None.
+ *
+ *      |h|     label     value
+ *           spectrum.
+ *                                  V
+ *           ------------------------
+ *                       x
+ *           ------------------------
+ *           ^   |   |   |   |   |   |
+ *           |   |   |   |   |   |   |
+ *           0  10  20  30  40  50  60
+ *
+ *
+ * Exterior axis:
+ *                    l       r
+ *  |a|b|c|d|e|f|g|h|i|   j   |i|h|g|f|e|d|c|d|a|
+ *
+ * Interior axis: 
+ *                  l           r
+ *  |a|b|c|d|h|g|f|e|     j     |e|f|g|h|d|c|b|a|
+ *               i..             ..i 
+ * a = highlight thickness
+ * b = scale borderwidth
+ * c = axis title
+ * d = tick label 
+ * e = tick 
+ * f = axis line
+ * g = 1 pixel pad
+ * h = plot borderwidth
+ * i = plot pad
+ * j = plot area 
+ *---------------------------------------------------------------------------
+ */
+static void
+GetAxisGeometry(Scale *scalePtr)
+{
+    int h;
+    int numTicks;
+    Tick left, right;
+
+    FreeTickLabels(scalePtr->tickLabels);
+    h = 0;
+    
+    scalePtr->maxTickLabelHeight = scalePtr->maxTickLabelWidth = 0;
+    
+    /* Compute the tick labels. */
+    numTicks = scalePtr->major.numSteps;
+    assert(numTicks <= MAXTICKS);
+    for (left = FirstMajorTick(scalePtr); left.isValid; left = right) {
+        TickLabel *labelPtr;
+        double mid;
+        int lw, lh;                 /* Label width and height. */
+        
+        right = NextMajorTick(scalePtr);
+        mid = left.value;
+        if ((scalePtr->flags & LABELOFFSET) && (right.isValid)) {
+            mid = (right.value - left.value) * 0.5;
+        }
+        if (!InRange(mid, &scalePtr->tickRange)) {
+            continue;
+        }
+        labelPtr = MakeLabel(scalePtr, left.value);
+        Blt_Chain_Append(scalePtr->tickLabels, labelPtr);
+        /* 
+         * Get the dimensions of each tick label.  Remember tick labels
+         * can be multi-lined and/or rotated.
+         */
+        Blt_GetTextExtents(scalePtr->tickFont, 0, labelPtr->string, -1, 
+                           &labelPtr->width, &labelPtr->height);
+        
+        if (scalePtr->tickAngle != 0.0f) {
+            double rlw, rlh;        /* Rotated label width and height. */
+
+            Blt_GetBoundingBox((double)labelPtr->width, 
+                               (double)labelPtr->height, 
+                               scalePtr->tickAngle, &rlw, &rlh, NULL);
+            lw = ROUND(rlw), lh = ROUND(rlh);
+        } else {
+            lw = labelPtr->width;
+            lh = labelPtr->height;
+        }
+        if (scalePtr->maxTickLabelWidth < lw) {
+            scalePtr->maxTickLabelWidth = lw;
+        }
+        if (scalePtr->maxTickLabelHeight < lh) {
+            scalePtr->maxTickLabelHeight = lh;
+        }
+    }
+    assert(Blt_Chain_GetLength(scalePtr->tickLabels) <= numTicks);
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ComputeHorizontalGeometry --
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static void
+ComputeHorizontalGeometry(Scale *scalePtr) 
+{
+    int y, x1, x2;
+    TickLabel *minLabelPtr, *maxLabelPtr;
+    int leftPad, rightPad;
+
+    if (scalePtr->flags & DECREASING) {
+        minLabelPtr = GetLastTickLabel(scalePtr);
+        maxLabelPtr = GetFirstTickLabel(scalePtr);
+    } else {
+        maxLabelPtr = GetLastTickLabel(scalePtr);
+        minLabelPtr = GetFirstTickLabel(scalePtr);
+    }
+    leftPad = MAX(minLabelPtr->width / 2, scalePtr->arrowWidth / 2);
+    rightPad = MAX(maxLabelPtr->width / 2, scalePtr->arrowWidth / 2);
+
+    x1 = scalePtr->inset + leftPad;    
+    x2 = Tk_Width(scalePtr->tkwin) - (scalePtr->inset + rightPad);
+
+    y = scalePtr->inset + PADY;
+    if (scalePtr->flags & SHOW_TITLE) {
+        y += scalePtr->titleHeight + PADY;
+    }
+    if (scalePtr->flags & SHOW_COLORBAR) {
+        scalePtr->colorbar.height = (scalePtr->flags & EXTERIOR) ?
+            MAX(scalePtr->colorbar.thickness, scalePtr->tickLength) :
+            scalePtr->colorbar.thickness;
+        y += scalePtr->colorbar.height + PADY;
+    } else {
+        y += scalePtr->arrowHeight;
+    }
+    scalePtr->x1 = x1;
+    scalePtr->x2 = x2;
+    scalePtr->y1 = y;
+    scalePtr->y2 = y + scalePtr->axisLineWidth;
+
+    y += scalePtr->axisLineWidth;
+    if (scalePtr->flags & SHOW_TICKS) {
+        y += PADY;
+        if (scalePtr->flags & EXTERIOR) {
+            y += scalePtr->tickLength;
+        } 
+    }
+    if (scalePtr->flags & SHOW_TICKLABELS) {
+        y += scalePtr->maxTickLabelHeight + PADY;
+    }
+    y += PADY + scalePtr->inset;
+    scalePtr->screenOffset = x1;
+    scalePtr->screenRange = x2 - x1;
+    scalePtr->height = y;
+    scalePtr->width = Tk_Width(scalePtr->tkwin);
+}    
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ComputeVerticalGeometry --
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static void
+ComputeVerticalGeometry(Scale *scalePtr) 
+{
+    int x, y1, y2;
+    TickLabel *minLabelPtr, *maxLabelPtr;
+    int topPad, bottomPad;
+
+    if (scalePtr->flags & DECREASING) {
+        minLabelPtr = GetLastTickLabel(scalePtr);
+        maxLabelPtr = GetFirstTickLabel(scalePtr);
+    } else {
+        maxLabelPtr = GetLastTickLabel(scalePtr);
+        minLabelPtr = GetFirstTickLabel(scalePtr);
+    }
+    bottomPad = MAX(minLabelPtr->height / 2, scalePtr->arrowWidth / 2);
+    topPad = MAX(maxLabelPtr->height / 2, scalePtr->arrowWidth / 2);
+
+    y1 = scalePtr->inset + topPad;    
+    y2 = Tk_Height(scalePtr->tkwin) - (scalePtr->inset + bottomPad);
+
+    x = scalePtr->inset + PADX;
+    if (scalePtr->flags & SHOW_TITLE) {
+        x += scalePtr->titleHeight + PADX;
+    }
+    if (scalePtr->flags & SHOW_COLORBAR) {
+        scalePtr->colorbar.width = (scalePtr->flags & EXTERIOR) ?
+            MAX(scalePtr->colorbar.thickness, scalePtr->tickLength) :
+            scalePtr->colorbar.thickness;
+        x += scalePtr->colorbar.width + PADX;
+    } else {
+        x += scalePtr->arrowHeight;
+    }
+    scalePtr->x1 = x;
+    scalePtr->x2 = x + scalePtr->axisLineWidth;
+    scalePtr->y1 = y1;
+    scalePtr->y2 = y2;
+
+    x += scalePtr->axisLineWidth;
+    if (scalePtr->flags & SHOW_TICKS) {
+        x += PADX;
+        if (scalePtr->flags & EXTERIOR) {
+            x += scalePtr->tickLength;
+        } 
+    }
+    if (scalePtr->flags & SHOW_TICKLABELS) {
+        x += scalePtr->maxTickLabelHeight + PADX;
+    }
+    x += PADX + scalePtr->inset;
+    scalePtr->screenOffset = y1;
+    scalePtr->screenRange = y2 - y1;
+    scalePtr->width = x;
+    scalePtr->height = Tk_Height(scalePtr->tkwin);
+}    
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ComputeGeometry --
+ *
+ *           Window Width
+ *      ___________________________________________________________
+ *      |          |                               |               |
+ *      |          |   TOP  height of title        |               |
+ *      |          |                               |               |
+ *      |          |           x2 title            |               |
+ *      |          |                               |               |
+ *      |          |        height of x2-axis      |               |
+ *      |__________|_______________________________|_______________|  W
+ *      |          | -plotpady                     |               |  i
+ *      |__________|_______________________________|_______________|  n
+ *      |          | top                   right   |               |  d
+ *      |          |                               |               |  o
+ *      |   LEFT   |                               |     RIGHT     |  w
+ *      |          |                               |               |
+ *      | y        |     Free area = 104%          |      y2       |  H
+ *      |          |     Plotting surface = 100%   |               |  e
+ *      | t        |     Tick length = 2 + 2%      |      t        |  i
+ *      | i        |                               |      i        |  g
+ *      | t        |                               |      t  legend|  h
+ *      | l        |                               |      l   width|  t
+ *      | e        |                               |      e        |
+ *      |    height|                               |height         |
+ *      |       of |                               | of            |
+ *      |    y-axis|                               |y2-axis        |
+ *      |          |                               |               |
+ *      |          |origin 0,0                     |               |
+ *      |__________|_left_________________bottom___|_______________|
+ *      |          |-plotpady                      |               |
+ *      |__________|_______________________________|_______________|
+ *      |          | (xoffset, yoffset)            |               |
+ *      |          |                               |               |
+ *      |          |       height of x-axis        |               |
+ *      |          |                               |               |
+ *      |          |   BOTTOM   x title            |               |
+ *      |__________|_______________________________|_______________|
+ *
+ * 3) The TOP margin is the area from the top window border to the top
+ *    of the graph. It composes the border width, twice the height of
+ *    the title font (if one is given) and some padding between the
+ *    title.
+ *
+ * 4) The BOTTOM margin is area from the bottom window border to the
+ *    X axis (not including ticks). It composes the border width, the height
+ *    an optional X axis label and its padding, the height of the font
+ *    of the tick labels.
+ *
+ * The plotting area is between the margins which includes the X and Y axes
+ * including the ticks but not the tick numeric labels. The length of the
+ * ticks and its padding is 5% of the entire plotting area.  Hence the
+ * entire plotting area is scaled as 105% of the width and height of the
+ * area.
+ *
+ * The axis labels, ticks labels, title, and legend may or may not be
+ * displayed which must be taken into account.
+ *
+ * if reqWidth > 0 : set outer size
+ * if reqPlotWidth > 0 : set plot size
+ *---------------------------------------------------------------------------
+ */
+static void
+ComputeGeometry(Scale *scalePtr)
+{
+    GetAxisGeometry(scalePtr);
+    if (HORIZONTAL(scalePtr)) {
+        ComputeHorizontalGeometry(scalePtr);
+    } else {
+        ComputeVerticalGeometry(scalePtr);
+    }
+    if (scalePtr->reqHeight > 0) {
+        scalePtr->height = scalePtr->reqHeight;
+    }
+    if (scalePtr->reqWidth > 0) {
+        scalePtr->width = scalePtr->reqWidth;
+    }
+    if ((scalePtr->width != Tk_ReqWidth(scalePtr->tkwin)) ||
+        (scalePtr->height != Tk_ReqHeight(scalePtr->tkwin))) {
+        Tk_GeometryRequest(scalePtr->tkwin, scalePtr->width, scalePtr->height);
+    }
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ResetTextStyles --
+ *
+ *      Configures axis attributes (font, line width, label, etc) and
+ *      allocates a new (possibly shared) graphics context.  Line cap style
+ *      is projecting.  This is for the problem of when a tick sits
+ *      directly at the end point of the axis.
+ *
+ * Results:
+ *      The return value is a standard TCL result.
+ *
+ * Side Effects:
+ *      Axis resources are allocated (GC, font). Axis layout is deferred
+ *      until the height and width of the window are known.
+ *
+ *---------------------------------------------------------------------------
+ */
+static void
+ResetTextStyles(Scale *scalePtr)
+{
+    GC newGC;
+    XGCValues gcValues;
+    unsigned long gcMask;
+    
+    gcMask = (GCForeground | GCLineWidth | GCCapStyle);
+    gcValues.foreground = scalePtr->tickColor->pixel;
+    gcValues.font = Blt_Font_Id(scalePtr->tickFont);
+    gcValues.line_width = scalePtr->tickLineWidth;
+    gcValues.cap_style = CapProjecting;
+
+    newGC = Tk_GetGC(scalePtr->tkwin, gcMask, &gcValues);
+    if (scalePtr->tickGC != NULL) {
+        Tk_FreeGC(scalePtr->display, scalePtr->tickGC);
+    }
+    scalePtr->tickGC = newGC;
+
+    /* Assuming settings from above GC */
+    gcValues.foreground = scalePtr->activeFgColor->pixel;
+    newGC = Tk_GetGC(scalePtr->tkwin, gcMask, &gcValues);
+    if (scalePtr->activeTickGC != NULL) {
+        Tk_FreeGC(scalePtr->display, scalePtr->activeTickGC);
+    }
+    scalePtr->activeTickGC = newGC;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * DestroyScale --
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      Resources (font, color, gc, labels, etc.) associated with the scale
+ *      are deallocated.
+ *
+ *---------------------------------------------------------------------------
+ */
+static void
+DestroyScale(Scale *scalePtr)
+{
+    Blt_FreeOptions(configSpecs, (char *)scalePtr, scalePtr->display, 0);
+    if (scalePtr->bindTable != NULL) {
+        Blt_DeleteBindings(scalePtr->bindTable, scalePtr);
+    }
+
+    if (scalePtr->tickGC != NULL) {
+        Tk_FreeGC(scalePtr->display, scalePtr->tickGC);
+    }
+    if (scalePtr->activeTickGC != NULL) {
+        Tk_FreeGC(scalePtr->display, scalePtr->activeTickGC);
+    }
+    if (scalePtr->disabledTickGC != NULL) {
+        Tk_FreeGC(scalePtr->display, scalePtr->disabledTickGC);
+    }
+    FreeTickLabels(scalePtr->tickLabels);
+    Blt_Chain_Destroy(scalePtr->tickLabels);
+    if (scalePtr->tickSegments != NULL) {
+        Blt_Free(scalePtr->tickSegments);
+    }
+    Blt_Free(scalePtr);
+}
+
+static void
+FreeScale(DestroyData data)
+{
+    Scale *scalePtr = (Scale *)data;
+    DestroyScale(scalePtr);
+}
+
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * NewScale --
+ *
+ *      Create and initialize a structure containing information to display
+ *      a scale.
+ *
+ * Results:
+ *      The return value is a pointer to an Scale structure.
+ *
+ *---------------------------------------------------------------------------
+ */
+static Scale *
+NewScale(Tcl_Interp *interp, Tk_Window tkwin)
+{
+    Scale *scalePtr;
+
+    scalePtr = Blt_Calloc(1, sizeof(Scale));
+    if (scalePtr == NULL) {
+        Tcl_AppendResult(interp, "can't allocate memory for scale \"", 
+                Tk_PathName(tkwin), "\"", (char *)NULL);
+        return NULL;
+    }
+    Tk_SetClass(tkwin, "BltScale");
+    scalePtr->display = Tk_Display(tkwin);
+    scalePtr->interp = interp;
+    scalePtr->tkwin = tkwin;
+    scalePtr->relief = TK_RELIEF_FLAT;
+    scalePtr->activeRelief = TK_RELIEF_RAISED;
+    scalePtr->flags |= TIGHT;
+    scalePtr->reqNumMinorTicks = 2;
+    scalePtr->reqNumMajorTicks = 10;
+    scalePtr->tickLength = 8;
+    scalePtr->colorbar.thickness = 0;
+    scalePtr->outerLeft = 0.1;
+    scalePtr->outerRight = 1.0;
+    scalePtr->flags = (SHOW_ALL | AUTO_MAJOR| AUTO_MINOR | EXTERIOR);
+    scalePtr->tickLabels = Blt_Chain_Create();
+    scalePtr->tickLineWidth = 1;
+    Blt_SetWindowInstanceData(tkwin, scalePtr);
+    return scalePtr;
+}
+
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ConfigureScale --
+ *
+ *      Configures axis attributes (font, line width, label, etc).
+ *
+ * Results:
+ *      The return value is a standard TCL result.
+ *
+ * Side Effects:
+ *      Axis layout is deferred until the height and width of the window are
+ *      known.
+ *
+ *---------------------------------------------------------------------------
+ */
+static int
+ConfigureScale(
+    Tcl_Interp *interp,                 /* Interpreter to report errors. */
+    Scale *scalePtr,                    /* Information about widget; may or
+                                         * may not already have values for
+                                         * some fields. */
+    int objc,
+    Tcl_Obj *const *objv,
+    int flags)
+{
+    float angle;
+
+    if (Blt_ConfigureWidgetFromObj(interp, scalePtr->tkwin, configSpecs, 
+           objc, objv, (char *)scalePtr, flags) != TCL_OK) {
+        return TCL_ERROR;
+    }
+    /* Check that the designate interval represents a valid range. Swap
+     * values and if min is greater than max. */
+    if (scalePtr->outerLeft >= scalePtr->outerRight) {
+        double tmp;
+
+        /* Just reverse the values. */
+        tmp = scalePtr->outerLeft;
+        scalePtr->outerLeft = scalePtr->outerRight;
+        scalePtr->outerRight = tmp;
+    }
+    /* Log scale limits must be positive. Move the limits to the positive
+     * range. */
+    if ((IsLogScale(scalePtr)) && (scalePtr->outerLeft <= 0.0)) {
+        double delta;
+        
+        delta = 1.0 - scalePtr->outerLeft;
+        scalePtr->outerLeft = 1.0;
+        scalePtr->outerRight = scalePtr->outerRight + delta;
+    }
+    /* If no range min and max is set, use the data range values. */
+    scalePtr->innerLeft = (DEFINED(scalePtr->reqInnerLeft))
+        ? scalePtr->outerLeft : scalePtr->reqInnerLeft;
+    scalePtr->innerRight = (DEFINED(scalePtr->reqInnerRight))
+        ? scalePtr->outerRight : scalePtr->reqInnerRight;
+
+    /* Subrange min and max must be within the scale's range. */
+    if (scalePtr->innerLeft < scalePtr->outerLeft) {
+        scalePtr->innerLeft = scalePtr->outerLeft;
+    }
+    if (scalePtr->innerRight > scalePtr->outerRight) {
+        scalePtr->innerRight = scalePtr->outerRight;
+    }
+    if ((Blt_ConfigModified(configSpecs, "-rangemin", (char *)NULL)) &&
+        (scalePtr->innerLeft > scalePtr->innerRight)) {
+        scalePtr->innerLeft = scalePtr->innerRight;
+    }
+    if ((Blt_ConfigModified(configSpecs, "-rangemax", (char *)NULL)) &&
+        (scalePtr->innerRight < scalePtr->innerLeft)) {
+        scalePtr->innerRight = scalePtr->innerLeft;
+    }
+    if (scalePtr->innerLeft > scalePtr->innerRight) {
+        double tmp;
+
+        /* Just reverse the values. */
+        tmp = scalePtr->innerLeft;
+        scalePtr->innerLeft = scalePtr->innerRight;
+        scalePtr->innerRight = tmp;
+    }
+    if (!DEFINED(scalePtr->nom)) {
+        scalePtr->nom = scalePtr->innerLeft;
+    }        
+    if (scalePtr->nom < scalePtr->innerLeft) {
+        scalePtr->nom = scalePtr->innerLeft;
+    }
+    if (scalePtr->nom > scalePtr->innerRight) {
+        scalePtr->nom = scalePtr->innerRight;
+    }
+    if (IsLogScale(scalePtr)) {
+        LogScaleAxis(scalePtr);
+    } else if (IsTimeScale(scalePtr)) {
+        TimeScaleAxis(scalePtr);
+    } else {
+        LinearScaleAxis(scalePtr);
+    }
+
+    ComputeGeometry(scalePtr);
+    angle = FMOD(scalePtr->tickAngle, 360.0f);
+    if (angle < 0.0f) {
+        angle += 360.0f;
+    }
+    if (scalePtr->normalBg != NULL) {
+        Blt_Bg_SetChangedProc(scalePtr->normalBg, BackgroundChangedProc, 
+                scalePtr);
+    }
+    scalePtr->tickAngle = angle;
+    ResetTextStyles(scalePtr);
+
+    scalePtr->titleWidth = scalePtr->titleHeight = 0;
+    if (scalePtr->title != NULL) {
+        unsigned int w, h;
+
+        Blt_GetTextExtents(scalePtr->titleFont, 0, scalePtr->title, -1, &w, &h);
+        scalePtr->titleWidth = w;
+        scalePtr->titleHeight = h;
+    }
+    EventuallyRedraw(scalePtr);
+    return TCL_OK;
+}
+
+#ifdef notdef
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ConfigureScale --
  *
  *      This procedure is called to process an objv/objc list, plus the Tk
  *      option database, in order to configure (or reconfigure) the widget.
@@ -6751,7 +3766,7 @@ NextMinorTick(Scale *scalePtr)
  *
  * Side Effects:
  *      Configuration information, such as text string, colors, font, etc. get
- *      set for setPtr; old resources get freed, if there were any.  The widget
+ *      set for scalePtr; old resources get freed, if there were any.  The widget
  *      is redisplayed.
  *
  *---------------------------------------------------------------------------
@@ -6780,33 +3795,33 @@ ConfigureScale(
         "-slant", "-rotate", "-tiers", "-tabwidth", 
         "-scrolltabs", "-showtabs", "-xbutton", "-justify",
         (char *)NULL)) {
-        setPtr->flags |= (LAYOUT_PENDING | SCROLL_PENDING);
+        scalePtr->flags |= (LAYOUT_PENDING | SCROLL_PENDING);
     }
 
     if (scalePtr->outerLeft >= scalePtr->outerRight) {
+        double tmp;
+
         /* Just reverse the values. */
         tmp = scalePtr->outerLeft;
         scalePtr->outerLeft = scalePtr->outerRight;
         scalePtr->outerRight = tmp;
     }
-    if (IsLogScale(scalePtr)) {
-        if (scalePtr->flags & CHECK_LIMITS) {
-            /* Check that the logscale limits are positive.  */
-            if (scalePtr->outerLeft <= 0.0) {
-                Tcl_AppendResult(graphPtr->interp,"bad logscale -min limit \"", 
-                        Blt_Dtoa(graphPtr->interp, scalePtr->outerLeft), 
-                        "\" for scale \"", Tk_PathName(scalePtr->tkwin), "\"", 
+    if (scalePtr->flags & CHECK_LIMITS) {
+        /* Check that the logscale limits are positive.  */
+        if (scalePtr->outerLeft <= 0.0) {
+            Tcl_AppendResult(scalePtr->interp,"bad logscale -min limit \"", 
+                             Blt_Dtoa(graphPtr->interp, scalePtr->outerLeft), 
+                             "\" for scale \"", Tk_PathName(scalePtr->tkwin), "\"", 
                         (char *)NULL);
                 return TCL_ERROR;
             }
         }
-    }
     angle = FMOD(scalePtr->tickAngle, 360.0f);
     if (angle < 0.0f) {
         angle += 360.0f;
     }
     if (scalePtr->normalBg != NULL) {
-        Blt_Bg_SetChangedProc(scalePtr->normalBg, Blt_UpdateGraph, 
+        Blt_Bg_SetChangedProc(scalePtr->normalBg, BackgroundChangedProc, 
                 scalePtr);
     }
     scalePtr->tickAngle = angle;
@@ -6822,22 +3837,22 @@ ConfigureScale(
     }
     EventuallyRedraw(scalePtr);
     return TCL_OK;
-    if ((setPtr->reqHeight > 0) && (setPtr->reqWidth > 0)) {
-        Tk_GeometryRequest(setPtr->tkwin, setPtr->reqWidth, 
-                setPtr->reqHeight);
+    if ((scalePtr->reqHeight > 0) && (scalePtr->reqWidth > 0)) {
+        Tk_GeometryRequest(scalePtr->tkwin, scalePtr->reqWidth, 
+                scalePtr->reqHeight);
     }
     
-    if (setPtr->reqQuad != QUAD_AUTO) {
-        setPtr->quad = setPtr->reqQuad;
+    if (scalePtr->reqQuad != QUAD_AUTO) {
+        scalePtr->quad = scalePtr->reqQuad;
     } else {
-        if (setPtr->side == SIDE_RIGHT) {
-            setPtr->quad = ROTATE_270;
-        } else if (setPtr->side == SIDE_LEFT) {
-            setPtr->quad = ROTATE_90;
-        } else if (setPtr->side == SIDE_BOTTOM) {
-            setPtr->quad = ROTATE_0;
-        } else if (setPtr->side == SIDE_TOP) {
-            setPtr->quad = ROTATE_0;
+        if (scalePtr->side == SIDE_RIGHT) {
+            scalePtr->quad = ROTATE_270;
+        } else if (scalePtr->side == SIDE_LEFT) {
+            scalePtr->quad = ROTATE_90;
+        } else if (scalePtr->side == SIDE_BOTTOM) {
+            scalePtr->quad = ROTATE_0;
+        } else if (scalePtr->side == SIDE_TOP) {
+            scalePtr->quad = ROTATE_0;
         }
     } 
 
@@ -6845,48 +3860,730 @@ ConfigureScale(
      * GC for focus highlight.
      */
     gcMask = GCForeground;
-    gcValues.foreground = setPtr->highlightColor->pixel;
-    newGC = Tk_GetGC(setPtr->tkwin, gcMask, &gcValues);
-    if (setPtr->highlightGC != NULL) {
-        Tk_FreeGC(setPtr->display, setPtr->highlightGC);
+    gcValues.foreground = scalePtr->highlightColor->pixel;
+    newGC = Tk_GetGC(scalePtr->tkwin, gcMask, &gcValues);
+    if (scalePtr->highlightGC != NULL) {
+        Tk_FreeGC(scalePtr->display, scalePtr->highlightGC);
     }
-    setPtr->highlightGC = newGC;
+    scalePtr->highlightGC = newGC;
 
-    if (setPtr->troughBg != NULL) {
-        Blt_Bg_SetChangedProc(setPtr->troughBg, BackgroundChangedProc, setPtr);
+    if (scalePtr->troughBg != NULL) {
+        Blt_Bg_SetChangedProc(scalePtr->troughBg, BackgroundChangedProc, scalePtr);
     }
-    ConfigureStyle(setPtr,  &setPtr->defStyle);
+    ConfigureStyle(scalePtr,  &scalePtr->defStyle);
     if (Blt_ConfigModified(configSpecs, "-font", "-*foreground", "-rotate",
                 "-*background", (char *)NULL)) {
         Tab *tabPtr;
 
-        for (tabPtr = FirstTab(setPtr, 0); tabPtr != NULL; 
+        for (tabPtr = FirstTab(scalePtr, 0); tabPtr != NULL; 
              tabPtr = NextTab(tabPtr, 0)) {
-            ConfigureTab(setPtr, tabPtr);
+            ConfigureTab(scalePtr, tabPtr);
         }
-        setPtr->flags |= (LAYOUT_PENDING | SCROLL_PENDING | REDRAW_ALL);
+        scalePtr->flags |= (LAYOUT_PENDING | SCROLL_PENDING | REDRAW_ALL);
     }
     /* Swap slant flags if side is left. */
     slantLeft = slantRight = FALSE;
-    if (setPtr->reqSlant & SLANT_LEFT) {
+    if (scalePtr->reqSlant & SLANT_LEFT) {
         slantLeft = TRUE;
     }
-    if (setPtr->reqSlant & SLANT_RIGHT) {
+    if (scalePtr->reqSlant & SLANT_RIGHT) {
         slantRight = TRUE;
     }
-    if (setPtr->side & SIDE_LEFT) {
+    if (scalePtr->side & SIDE_LEFT) {
         SWAP(slantLeft, slantRight);
     }
-    setPtr->flags &= ~SLANT_BOTH;
+    scalePtr->flags &= ~SLANT_BOTH;
     if (slantLeft) {
-        setPtr->flags |= SLANT_LEFT;
+        scalePtr->flags |= SLANT_LEFT;
     }
     if (slantRight) {
-        setPtr->flags |= SLANT_RIGHT;
+        scalePtr->flags |= SLANT_RIGHT;
     }
-    EventuallyRedraw(setPtr);
+    EventuallyRedraw(scalePtr);
     return TCL_OK;
 }
+#endif
+
+static void
+MapHorizontalTicks(Scale *scalePtr, int y)
+{
+    int arraySize;
+    int numMajorTicks, numMinorTicks;
+    XSegment *segments, *segPtr;
+    Blt_ChainLink link;
+    double labelPos;
+    Tick left, right;
+    int minorTickLength, majorTickLength;
+
+    scalePtr->tickAnchor = TK_ANCHOR_N;
+    minorTickLength = (scalePtr->tickLength * 10) / 15;
+    majorTickLength = scalePtr->tickLength;
+    if ((scalePtr->flags & EXTERIOR) == 0) {
+        y -= scalePtr->axisLineWidth;
+        minorTickLength = -minorTickLength;
+        majorTickLength = -majorTickLength;
+    }
+    numMajorTicks = scalePtr->major.numSteps;
+    numMinorTicks = scalePtr->minor.numSteps;
+    arraySize = 1 + numMajorTicks + (numMajorTicks * (numMinorTicks + 1));
+    segments = Blt_AssertMalloc(arraySize * sizeof(XSegment));
+    segPtr = segments;
+
+    link = Blt_Chain_FirstLink(scalePtr->tickLabels);
+    labelPos = y;
+    for (left = FirstMajorTick(scalePtr); left.isValid; left = right) {
+        right = NextMajorTick(scalePtr);
+        if (right.isValid) {
+            Tick minor;
+            
+            /* If this isn't the last major tick, add minor ticks. */
+            scalePtr->minor.range = right.value - left.value;
+            scalePtr->minor.initial = left.value;
+            for (minor = FirstMinorTick(scalePtr); minor.isValid; 
+                 minor = NextMinorTick(scalePtr)) {
+                if (InRange(minor.value, &scalePtr->tickRange)) {
+                    /* Add minor tick. */
+                    segPtr->x1 = segPtr->x2 = 
+                        ConvertToScreenX(scalePtr, minor.value);
+                    segPtr->y1 = y;
+                    segPtr->y2 = y + minorTickLength;
+                    segPtr++;
+                }
+            }        
+        }
+        if (InRange(left.value, &scalePtr->tickRange)) {
+            double mid;
+            
+            /* Add major tick. This could be the last major tick. */
+            segPtr->x1 = segPtr->x2 = ConvertToScreenX(scalePtr, left.value);
+            segPtr->y1 = y;
+            segPtr->y2 = y + majorTickLength;
+
+            mid = left.value;
+            if ((scalePtr->flags & LABELOFFSET) && (right.isValid)) {
+                mid = (right.value - left.value) * 0.5;
+            }
+            if (InRange(mid, &scalePtr->tickRange)) {
+                TickLabel *labelPtr;
+                
+                labelPtr = Blt_Chain_GetValue(link);
+                link = Blt_Chain_NextLink(link);
+                
+                labelPtr->anchorPos.x = segPtr->x1;
+                labelPtr->anchorPos.y = labelPos;
+            }
+        }
+    }
+    scalePtr->tickSegments = segments;
+    scalePtr->numSegments = segPtr - segments;
+    assert(scalePtr->numSegments <= arraySize);
+}
+
+static void
+MapVerticalTicks(Scale *scalePtr, int x)
+{
+    int arraySize;
+    int numMajorTicks, numMinorTicks;
+    XSegment *segments, *segPtr;
+    Blt_ChainLink link;
+    double labelPos;
+    Tick left, right;
+    int minorTickLength, majorTickLength;
+
+    scalePtr->tickAnchor = TK_ANCHOR_N;
+    minorTickLength = (scalePtr->tickLength * 10) / 15;
+    majorTickLength = scalePtr->tickLength;
+    if ((scalePtr->flags & EXTERIOR) == 0) {
+        x -= scalePtr->axisLineWidth;
+        minorTickLength = -minorTickLength;
+        majorTickLength = -majorTickLength;
+    }
+    numMajorTicks = scalePtr->major.numSteps;
+    numMinorTicks = scalePtr->minor.numSteps;
+    arraySize = 1 + numMajorTicks + (numMajorTicks * (numMinorTicks + 1));
+    segments = Blt_AssertMalloc(arraySize * sizeof(XSegment));
+    segPtr = segments;
+
+    link = Blt_Chain_FirstLink(scalePtr->tickLabels);
+    labelPos = x;
+    for (left = FirstMajorTick(scalePtr); left.isValid; left = right) {
+        right = NextMajorTick(scalePtr);
+        if (right.isValid) {
+            Tick minor;
+            
+            /* If this isn't the last major tick, add minor ticks. */
+            scalePtr->minor.range = right.value - left.value;
+            scalePtr->minor.initial = left.value;
+            for (minor = FirstMinorTick(scalePtr); minor.isValid; 
+                 minor = NextMinorTick(scalePtr)) {
+                if (InRange(minor.value, &scalePtr->tickRange)) {
+                    /* Add minor tick. */
+                    segPtr->y1 = segPtr->y2 = 
+                        ConvertToScreenY(scalePtr, minor.value);
+                    segPtr->x1 = x;
+                    segPtr->x2 = x + minorTickLength;
+                    segPtr++;
+                }
+            }        
+        }
+        if (InRange(left.value, &scalePtr->tickRange)) {
+            double mid;
+            
+            /* Add major tick. This could be the last major tick. */
+            segPtr->y1 = segPtr->y2 = ConvertToScreenY(scalePtr, left.value);
+            segPtr->x1 = x;
+            segPtr->x2 = x + majorTickLength;
+
+            mid = left.value;
+            if ((scalePtr->flags & LABELOFFSET) && (right.isValid)) {
+                mid = (right.value - left.value) * 0.5;
+            }
+            if (InRange(mid, &scalePtr->tickRange)) {
+                TickLabel *labelPtr;
+                
+                labelPtr = Blt_Chain_GetValue(link);
+                link = Blt_Chain_NextLink(link);
+                
+                labelPtr->anchorPos.x = labelPos;
+                labelPtr->anchorPos.y = segPtr->y1;
+            }
+        }
+    }
+    scalePtr->tickSegments = segments;
+    scalePtr->numSegments = segPtr - segments;
+    assert(scalePtr->numSegments <= arraySize);
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * MapHorizontalScale --
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static void
+MapHorizontalScale(Scale *scalePtr) 
+{
+    int y;
+
+    y = scalePtr->inset + PADY;
+    if (scalePtr->flags & SHOW_TITLE) {
+        scalePtr->titleY = y;
+        switch (scalePtr->titleJustify) {
+        case TK_JUSTIFY_LEFT:
+            scalePtr->titleX = scalePtr->x1;
+            scalePtr->titleAnchor = TK_ANCHOR_W;
+            break;
+        case TK_JUSTIFY_CENTER:
+            scalePtr->titleX = (scalePtr->x1 + scalePtr->x2) / 2;
+            scalePtr->titleAnchor = TK_ANCHOR_N;
+            break;
+        case TK_JUSTIFY_RIGHT:
+            scalePtr->titleX = scalePtr->x2;
+            scalePtr->titleAnchor = TK_ANCHOR_E;
+            break;
+        }
+        y += scalePtr->titleHeight + PADY;
+    }
+
+    if (scalePtr->flags & SHOW_COLORBAR) {
+        scalePtr->colorbar.x = scalePtr->x1;
+        scalePtr->colorbar.y = y;
+        scalePtr->colorbar.width = scalePtr->x2 - scalePtr->x1 + 1;
+        y += scalePtr->colorbar.height;
+    }
+    scalePtr->y1 = y;
+    y += scalePtr->axisLineWidth;
+    scalePtr->y2 = y;
+
+    if (scalePtr->tickSegments != NULL) {
+        Blt_Free(scalePtr->tickSegments);
+        scalePtr->tickSegments = NULL;
+    }
+    if (scalePtr->flags & (SHOW_TICKS|SHOW_TICKLABELS)) {
+        MapHorizontalTicks(scalePtr, y - scalePtr->axisLineWidth);
+    }
+    if (scalePtr->flags & SHOW_TICKS) {
+        y += PADY;
+        if (scalePtr->flags & EXTERIOR) {
+            y += scalePtr->tickLength;
+        } 
+    }
+    if (scalePtr->flags & SHOW_TICKLABELS) {
+        y += scalePtr->maxTickLabelHeight + PADY;
+    }
+    y += PADY + scalePtr->inset;
+}    
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * MapVerticalScale --
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static void
+MapVerticalScale(Scale *scalePtr) 
+{
+    int x;
+
+    x = scalePtr->inset + PADY;
+    if (scalePtr->flags & SHOW_TITLE) {
+        scalePtr->titleY = scalePtr->inset + PADY;
+        switch (scalePtr->titleJustify) {
+        case TK_JUSTIFY_LEFT:
+            scalePtr->titleX = scalePtr->inset + PADX;
+            scalePtr->titleAnchor = TK_ANCHOR_W;
+            break;
+        case TK_JUSTIFY_CENTER:
+            scalePtr->titleX = Tk_Width(scalePtr->tkwin) / 2;
+            scalePtr->titleAnchor = TK_ANCHOR_N;
+            break;
+        case TK_JUSTIFY_RIGHT:
+            scalePtr->titleX = Tk_Width(scalePtr->tkwin) - scalePtr->inset -
+                PADX;
+            scalePtr->titleAnchor = TK_ANCHOR_E;
+            break;
+        }
+        x += scalePtr->titleHeight + PADX;
+    }
+
+    if (scalePtr->flags & SHOW_COLORBAR) {
+        scalePtr->colorbar.y = scalePtr->y1;
+        scalePtr->colorbar.x = x;
+        scalePtr->colorbar.height = scalePtr->y2 - scalePtr->y1 + 1;
+        x += scalePtr->colorbar.width;
+    }
+    scalePtr->x1 = x;
+    x += scalePtr->axisLineWidth;
+    scalePtr->x2 = x;
+
+    if (scalePtr->tickSegments != NULL) {
+        Blt_Free(scalePtr->tickSegments);
+        scalePtr->tickSegments = NULL;
+    }
+    if (scalePtr->flags & (SHOW_TICKS|SHOW_TICKLABELS)) {
+        MapVerticalTicks(scalePtr, x);
+    }
+    if (scalePtr->flags & SHOW_TICKS) {
+        x += PADX;
+        if (scalePtr->flags & EXTERIOR) {
+            x += scalePtr->tickLength;
+        } 
+    }
+    if (scalePtr->flags & SHOW_TICKLABELS) {
+        x += scalePtr->maxTickLabelWidth + PADX;
+    }
+    x += PADX + scalePtr->inset;
+}    
+
+static int
+GradientCalcProc(ClientData clientData, int x, int y, double *valuePtr)
+{
+    Scale *scalePtr = clientData;
+    double t;
+
+    if (HORIZONTAL(scalePtr)) {
+        t = (double)x * scalePtr->screenScale;
+    } else {
+        t = (double)y * scalePtr->screenScale;
+    }
+    *valuePtr = t;
+    return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ColorbarToPicture --
+ *
+ * Results:
+ *      None.
+ *
+ *---------------------------------------------------------------------------
+ */
+static Blt_Picture
+ColorbarToPicture(Scale *scalePtr, int w, int h)
+{
+    Blt_Picture picture;
+
+    if (scalePtr->palette == NULL) {
+        return NULL;                    /* No palette defined. */
+    }
+    picture = Blt_CreatePicture(w, h);
+    if (picture != NULL) {
+        Blt_PaintBrush brush;
+
+        brush = Blt_NewLinearGradientBrush();
+        Blt_SetLinearGradientBrushPalette(brush, scalePtr->palette);
+        Blt_SetLinearGradientBrushCalcProc(brush, GradientCalcProc, scalePtr);
+        Blt_PaintRectangle(picture, 0, 0, w, h, 0, 0, brush, FALSE);
+        Blt_FreeBrush(brush);
+        return picture;
+    }
+    return NULL;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * DrawColorbar --
+ *
+ * Results:
+ *      None.
+ *
+ *---------------------------------------------------------------------------
+ */
+static void
+DrawColorbar(Scale *scalePtr, Drawable drawable)
+{
+    Blt_Painter painter;
+    Blt_Picture picture;
+
+    if (scalePtr->palette == NULL) {
+        return;                         /* No palette defined. */
+    }
+    picture = ColorbarToPicture(scalePtr, scalePtr->colorbar.width, 
+                                scalePtr->colorbar.height);
+    if (picture == NULL) {
+        return;                         /* Background is obscured. */
+    }
+    painter = Blt_GetPainter(scalePtr->tkwin, 1.0);
+    Blt_PaintPicture(painter, drawable, picture, 0, 0, 
+                     scalePtr->colorbar.width, scalePtr->colorbar.height, 
+                     scalePtr->colorbar.x, scalePtr->colorbar.y, 0);
+    Blt_FreePicture(picture);
+}
+
+
+static Blt_Picture
+GetMaxArrowPicture(Scale *scalePtr, int w, int h, int direction)
+{
+    Blt_Picture *pictPtr;
+    XColor *colorPtr;
+
+    if (scalePtr->flags & ACTIVE_MAXARROW) {
+        colorPtr = scalePtr->activeMaxArrowColor;
+        pictPtr = &scalePtr->activeMaxArrow;
+    } else if (scalePtr->flags & DISABLED) {
+        colorPtr = scalePtr->disabledFgColor;
+        pictPtr = &scalePtr->disabledMaxArrow;
+    } else {
+        colorPtr = scalePtr->normalMaxArrowColor;
+        pictPtr = &scalePtr->normalMaxArrow;
+    }
+    if (((*pictPtr) == NULL) ||
+        (Blt_Picture_Width(*pictPtr) != w) ||
+        (Blt_Picture_Height(*pictPtr) != h)) {
+        Blt_Picture picture;
+        int ix, iy, ih, iw;
+
+        if (*pictPtr != NULL) {
+            Blt_FreePicture(*pictPtr);
+        }
+        ih = h * 40 / 100;
+        iw = w * 80 / 100;
+        picture = Blt_CreatePicture(w, h);
+        Blt_BlankPicture(picture, 0x0);
+        iy = (h - ih) / 2;
+        ix = (w - iw) / 2;
+        Blt_PaintArrowHead(picture, ix, iy, iw, ih, 
+                           Blt_XColorToPixel(colorPtr), direction);
+        *pictPtr = picture;
+    }
+    return *pictPtr;
+}
+
+static Blt_Picture
+GetMinArrowPicture(Scale *scalePtr, int w, int h, int direction)
+{
+    Blt_Picture *pictPtr;
+    XColor *colorPtr;
+
+    if (scalePtr->flags & ACTIVE_MINARROW) {
+        colorPtr = scalePtr->activeMinArrowColor;
+        pictPtr = &scalePtr->activeMinArrow;
+    } else if (scalePtr->flags & DISABLED) {
+        colorPtr = scalePtr->disabledFgColor;
+        pictPtr = &scalePtr->disabledMinArrow;
+    } else {
+        colorPtr = scalePtr->normalMinArrowColor;
+        pictPtr = &scalePtr->normalMinArrow;
+    }
+    if (((*pictPtr) == NULL) ||
+        (Blt_Picture_Width(*pictPtr) != w) ||
+        (Blt_Picture_Height(*pictPtr) != h)) {
+        Blt_Picture picture;
+        int ix, iy, ih, iw;
+
+        if (*pictPtr != NULL) {
+            Blt_FreePicture(*pictPtr);
+        }
+        ih = h * 40 / 100;
+        iw = w * 80 / 100;
+        picture = Blt_CreatePicture(w, h);
+        Blt_BlankPicture(picture, 0x0);
+        iy = (h - ih) / 2;
+        ix = (w - iw) / 2;
+        Blt_PaintArrowHead(picture, ix, iy, iw, ih, 
+                           Blt_XColorToPixel(colorPtr), direction);
+        *pictPtr = picture;
+    }
+    return *pictPtr;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * DrawScale --
+ *
+ *      Draws the scale.
+ *
+ * Results:
+ *      None.
+ *
+ *---------------------------------------------------------------------------
+ */
+static void
+DrawScale(Scale *scalePtr, Drawable drawable)
+{
+    Blt_Bg bg;
+    XColor *fg, *titleFg;
+    GC gc;
+    int relief;
+
+    if (scalePtr->flags & ACTIVE) {
+        bg = scalePtr->activeBg;
+        fg = scalePtr->normalFgColor;
+        titleFg = scalePtr->titleColor;
+        relief = scalePtr->activeRelief;
+        gc = scalePtr->tickGC;
+    } else if (scalePtr->flags & DISABLED) {
+        bg = scalePtr->disabledBg;
+        titleFg = fg = scalePtr->disabledFgColor;
+        relief = scalePtr->relief;
+        gc = scalePtr->disabledGC;
+    } else {
+        bg = scalePtr->normalBg;
+        fg = scalePtr->normalFgColor;
+        relief = scalePtr->relief;
+        titleFg = scalePtr->titleColor;
+        gc = scalePtr->tickGC;
+    }        
+    Blt_Bg_FillRectangle(scalePtr->tkwin, drawable, bg, 
+        scalePtr->highlightWidth, scalePtr->highlightWidth, 
+        Tk_Width(scalePtr->tkwin) - 2 * scalePtr->highlightWidth, 
+        Tk_Height(scalePtr->tkwin) - 2 * scalePtr->highlightWidth, 
+        scalePtr->borderWidth, relief);
+    if (scalePtr->flags & SHOW_COLORBAR) {
+        DrawColorbar(scalePtr, drawable);
+    }
+    if ((scalePtr->flags & SHOW_TITLE) && (scalePtr->title != NULL)) {
+        TextStyle ts;
+
+        Blt_Ts_InitStyle(ts);
+        Blt_Ts_SetFont(ts, scalePtr->titleFont);
+        Blt_Ts_SetPadding(ts, 1, 2, 0, 0);
+        Blt_Ts_SetAnchor(ts, scalePtr->titleAnchor);
+        Blt_Ts_SetForeground(ts, titleFg);
+        Blt_Ts_SetMaxLength(ts, scalePtr->width - 2 * scalePtr->inset);
+        Blt_Ts_DrawText(scalePtr->tkwin, drawable, scalePtr->title, -1, &ts, 
+                scalePtr->titleX, scalePtr->titleY);
+    }
+    /* Axis line */
+    XDrawRectangle(scalePtr->display, drawable, scalePtr->axisGC, 
+                   scalePtr->x1, scalePtr->y1,
+                   scalePtr->x2 - scalePtr->x1 + 1, 
+                   scalePtr->y2 - scalePtr->y2 + 1);
+    /* Draw inner interval. */
+    if (HORIZONTAL(scalePtr)) {
+        int x1, x2, y;
+
+        x1 = HMap(scalePtr, scalePtr->innerLeft);
+        x2 = HMap(scalePtr, scalePtr->innerRight);
+        y = (scalePtr->y2 + scalePtr->y1) / 2;
+        XDrawLine(scalePtr->display, drawable, scalePtr->innerGC, 
+                  x1, y, x2, y);
+    } else {
+        int y1, y2, x;
+
+        y1 = VMap(scalePtr, scalePtr->innerLeft);
+        y2 = VMap(scalePtr, scalePtr->innerRight);
+        x = (scalePtr->x2 + scalePtr->x1) / 2;
+        XDrawLine(scalePtr->display, drawable, scalePtr->innerGC, 
+                  x, y1, x, y2);
+    }
+    /* Major and minor ticks. */
+    if ((scalePtr->flags & SHOW_TICKS) && (scalePtr->numSegments > 0) && 
+        (scalePtr->tickLineWidth > 0)) {       
+        XDrawSegments(scalePtr->display, drawable, gc, scalePtr->tickSegments, 
+                scalePtr->numSegments);
+    }
+    /* Tick labels. */
+    if (scalePtr->flags & SHOW_TICKLABELS) {
+        Blt_ChainLink link;
+        TextStyle ts;
+
+        Blt_Ts_InitStyle(ts);
+        Blt_Ts_SetAngle(ts, scalePtr->tickAngle);
+        Blt_Ts_SetFont(ts, scalePtr->tickFont);
+        Blt_Ts_SetPadding(ts, 2, 0, 0, 0);
+        Blt_Ts_SetAnchor(ts, scalePtr->tickAnchor);
+        if (scalePtr->flags & ACTIVE) {
+            Blt_Ts_SetForeground(ts, scalePtr->activeFgColor);
+        } else if (scalePtr->flags & DISABLED) {
+            Blt_Ts_SetForeground(ts, scalePtr->disabledFgColor);
+        } else {
+           Blt_Ts_SetForeground(ts, scalePtr->tickColor);
+        }
+        for (link = Blt_Chain_FirstLink(scalePtr->tickLabels); link != NULL;
+            link = Blt_Chain_NextLink(link)) {  
+            TickLabel *labelPtr;
+
+            labelPtr = Blt_Chain_GetValue(link);
+            /* Draw major tick labels */
+            Blt_DrawText(scalePtr->tkwin, drawable, labelPtr->string, &ts, 
+                (int)labelPtr->anchorPos.x, (int)labelPtr->anchorPos.y);
+        }
+    }
+    /* Inner interval max arrow. */
+    if (scalePtr->flags & SHOW_MAXARROW) {
+        Blt_Picture picture;
+
+        if (scalePtr->painter == NULL) {
+            scalePtr->painter = Blt_GetPainter(scalePtr->tkwin, 1.0);
+        }
+        if (HORIZONTAL(scalePtr)) {
+            int x;
+
+            x = HMap(scalePtr, scalePtr->innerRight);
+            picture = GetMaxArrowPicture(scalePtr, scalePtr->arrowWidth, 
+                                  scalePtr->arrowHeight, ARROW_DOWN);
+            Blt_PaintPicture(scalePtr->painter, drawable, picture, 0, 0, 
+                scalePtr->arrowWidth, scalePtr->arrowHeight, 
+                x - scalePtr->arrowWidth, scalePtr->y1 - scalePtr->arrowHeight,
+                0);
+        } else {
+            int y;
+
+            y = VMap(scalePtr, scalePtr->innerRight);
+            picture = GetMaxArrowPicture(scalePtr, scalePtr->arrowHeight, 
+                                  scalePtr->arrowWidth, ARROW_RIGHT);
+            Blt_PaintPicture(scalePtr->painter, drawable, picture, 0, 0, 
+                scalePtr->arrowHeight, scalePtr->arrowWidth, 
+                scalePtr->x1 - scalePtr->arrowHeight, 
+                y - scalePtr->arrowWidth, 0);
+        }
+   }
+    /* Inner interval min arrow. */
+    if (scalePtr->flags & SHOW_MINARROW) {
+        Blt_Picture picture;
+
+        if (scalePtr->painter == NULL) {
+            scalePtr->painter = Blt_GetPainter(scalePtr->tkwin, 1.0);
+        }
+        if (HORIZONTAL(scalePtr)) {
+            int x;
+
+            x = HMap(scalePtr, scalePtr->innerLeft);
+            picture = GetMinArrowPicture(scalePtr, scalePtr->arrowWidth, 
+                                  scalePtr->arrowHeight, ARROW_UP);
+            Blt_PaintPicture(scalePtr->painter, drawable, picture, 0, 0, 
+                scalePtr->arrowWidth, scalePtr->arrowHeight, 
+                x - scalePtr->arrowWidth, scalePtr->y1 - scalePtr->arrowHeight,
+                0);
+        } else {
+            int y;
+
+            y = VMap(scalePtr, scalePtr->innerLeft);
+            picture = GetMinArrowPicture(scalePtr, scalePtr->arrowHeight, 
+                                  scalePtr->arrowWidth, ARROW_LEFT);
+            Blt_PaintPicture(scalePtr->painter, drawable, picture, 0, 0, 
+                scalePtr->arrowHeight, scalePtr->arrowWidth, 
+                scalePtr->x1 - scalePtr->arrowHeight, y - scalePtr->arrowWidth,
+                0);
+        }
+    }
+    if (scalePtr->flags & (SHOW_CURRENT|SHOW_GRIP)) {
+        Blt_Bg bg;
+
+        if (scalePtr->flags & DISABLED) {
+            bg = scalePtr->disabledBg;
+        } else if (scalePtr->flags & ACTIVE_GRIP) {
+            bg = scalePtr->activeGripBg;
+        } else {
+            bg = scalePtr->normalGripBg;
+        }
+        if (HORIZONTAL(scalePtr)) {
+            int x;
+
+            x = HMap(scalePtr, scalePtr->currentValue);
+            /* Current value line. */
+            if (scalePtr->flags & SHOW_CURRENT) {
+                XDrawLine(scalePtr->display, drawable, scalePtr->currentGC, 
+                          x, scalePtr->inset,
+                          x, Tk_Height(scalePtr->tkwin) - scalePtr->inset);
+            }
+            if (scalePtr->flags & SHOW_GRIP) {
+                Blt_Bg_FillRectangle(scalePtr->tkwin, drawable, bg, 
+                        x, scalePtr->y1 - scalePtr->gripHeight / 2,
+                        scalePtr->gripWidth, scalePtr->gripHeight,
+                        scalePtr->gripBorderWidth, scalePtr->gripRelief);
+            } 
+        } else {
+            int y;
+
+            y = VMap(scalePtr, scalePtr->currentValue);
+            /* Current value line. */
+            if (scalePtr->flags & SHOW_CURRENT) {
+                XDrawLine(scalePtr->display, drawable, scalePtr->currentGC, 
+                          scalePtr->inset, y,
+                          Tk_Width(scalePtr->tkwin) - scalePtr->inset, y);
+            }
+            if (scalePtr->flags & SHOW_GRIP) {
+                Blt_Bg_FillRectangle(scalePtr->tkwin, drawable, bg, 
+                        scalePtr->x1 - scalePtr->gripHeight / 2, y,
+                        scalePtr->gripHeight, scalePtr->gripWidth,
+                        scalePtr->gripBorderWidth, scalePtr->gripRelief);
+            } 
+        }
+    }
+}
+
+
+#ifdef notdef
+ClientData
+Blt_MakeAxisTag(Scale *scalePtr, const char *tagName)
+{
+    Blt_HashEntry *hPtr;
+    int isNew;
+
+    hPtr = Blt_CreateHashEntry(&scalePtr->bindTagTable, tagName, &isNew);
+    return Blt_GetHashKey(&scalePtr->bindTagTable, hPtr);
+}
+
+
+/*-------------------------------------------------------------------------------
+ *
+ * AxisBindOp --
+ *
+ *    .g axis bind axisName sequence command
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static int
+AxisBindOp(ClientData clientData, Tcl_Interp *interp, int objc, 
+           Tcl_Obj *const *objv)
+{
+    Scale *scalePtr = clientData;
+
+    return Blt_ConfigureBindingsFromObj(interp, scalePtr->bindTable, 
+        Blt_MakeAxisTag(scalePtr, Tcl_GetString(objv[3])), objc - 4, objv + 4);
+}
+#endif
 
 /*
  *---------------------------------------------------------------------------
@@ -6927,15 +4624,19 @@ DisplayProc(ClientData clientData)
     }
     scalePtr->width = Tk_Width(tkwin);
     scalePtr->height = Tk_Height(tkwin);
-    Blt_MapGraph(graphPtr);
+    if (HORIZONTAL(scalePtr)) {
+        MapHorizontalScale(scalePtr);
+    } else {
+        MapVerticalScale(scalePtr);
+    }
     if (!Tk_IsMapped(tkwin)) {
-        /* The graph's window isn't displayed, so don't bother drawing
+        /* The scale's window isn't displayed, so don't bother drawing
          * anything.  By getting this far, we've at least computed the
-         * coordinates of the graph's new layout.  */
+         * coordinates of the scale's new layout.  */
         return;
     }
     /* Create a pixmap the size of the window for double buffering. */
-    pixmap = Blt_GetPixmap(graphPtr->display, Tk_WindowId(tkwin), 
+    pixmap = Blt_GetPixmap(scalePtr->display, Tk_WindowId(tkwin), 
           scalePtr->width, scalePtr->height, Tk_Depth(tkwin));
 #ifdef WIN32
     assert(pixmap != None);
@@ -6962,7 +4663,6 @@ DisplayProc(ClientData clientData)
         scalePtr->drawGC, 0, 0, scalePtr->width, scalePtr->height, 0, 0);
     Tk_FreePixmap(scalePtr->display, pixmap);
 }
-
 
 /*
  *---------------------------------------------------------------------------
@@ -7014,11 +4714,13 @@ static int
 BindOp(ClientData clientData, Tcl_Interp *interp, int objc,
        Tcl_Obj *const *objv)
 {
+#ifdef notdef
     Scale *scalePtr = clientData;
-    Graph *graphPtr = scalePtr->obj.graphPtr;
 
-    return Blt_ConfigureBindingsFromObj(interp, graphPtr->bindTable,
-          Blt_MakeScaleTag(graphPtr, scalePtr->obj.name), objc, objv);
+    return Blt_ConfigureBindingsFromObj(interp, scalePtr->bindTable,
+              Blt_MakeScaleTag(scalePtr, what), objc, objv);
+#endif
+    return TCL_OK;
 }
           
 /*
@@ -7094,11 +4796,11 @@ ConfigureOp(ClientData clientData, Tcl_Interp *interp, int objc,
  * LimitsOp --
  *
  *      This procedure returns a string representing the scale limits
- *      of the graph.  The format of the string is { left top right bottom}.
+ *      of the axis.  The format of the string is { left top right bottom}.
  *
  * Results:
  *      Always returns TCL_OK.  The interp->result field is
- *      a list of the graph scale limits.
+ *      a list of the axis limits.
  *
  *	pathName limits 
  *
@@ -7147,7 +4849,7 @@ static int
 InvTransformOp(ClientData clientData, Tcl_Interp *interp, int objc, 
                Tcl_Obj *const *objv)
 {
-    Axis *scalePtr = clientData;
+    Scale *scalePtr = clientData;
     double y;                           /* Resulting axis coordinate */
     int sy;                             /* Integer window coordinate*/
 
@@ -7184,7 +4886,7 @@ static int
 TransformOp(ClientData clientData, Tcl_Interp *interp, int objc,
             Tcl_Obj *const *objv)
 {
-    Axis *scalePtr = clientData;
+    Scale *scalePtr = clientData;
     double x;
 
     if (Blt_ExprDoubleFromObj(interp, objv[0], &x) != TCL_OK) {
@@ -7199,88 +4901,117 @@ TransformOp(ClientData clientData, Tcl_Interp *interp, int objc,
     return TCL_OK;
 }
 
+static ScalePart
+IdentifyPart(Scale *scalePtr, int sx, int sy)
+{
+    if ((sx >= scalePtr->titleX) && (sy >= scalePtr->titleY) &&
+        (sx < (scalePtr->titleX + scalePtr->titleWidth)) &&
+        (sy < (scalePtr->titleY + scalePtr->titleHeight))) {
+        return PICK_TITLE;
+    }
+    return PICK_NONE;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * IdentifyOp --
+ *
+ * Results:
+ *      Return value is a standard TCL result.  If querying configuration
+ *      values, interp->result will contain the results.
+ *
+ *    pathName identify x y
+ *
+ *---------------------------------------------------------------------------
+ */
+/* ARGSUSED */
 static int
-ViewOp(ClientData clientData, Tcl_Interp *interp, int objc,
+IdentifyOp(ClientData clientData, Tcl_Interp *interp, int objc,
        Tcl_Obj *const *objv)
 {
+    IdentifySwitches switches;
     Scale *scalePtr = clientData;
-    double axisOffset, axisScale;
-    double fract;
-    double viewMin, viewMax, worldMin, worldMax;
-    double viewWidth, worldWidth;
+    ScalePart id;
+    int sx, sy;
 
-    worldMin = scalePtr->outerLeft;
-    worldMax = scalePtr->outerRight;
-    /* Override data dimensions with user-selected limits. */
-    if (DEFINED(scalePtr->scrollMin)) {
-        worldMin = scalePtr->scrollMin;
-    }
-    if (DEFINED(scalePtr->scrollMax)) {
-        worldMax = scalePtr->scrollMax;
-    }
-    viewMin = scalePtr->min;
-    viewMax = scalePtr->max;
-    /* Bound the view within scroll region. */ 
-    if (viewMin < worldMin) {
-        viewMin = worldMin;
-    } 
-    if (viewMax > worldMax) {
-        viewMax = worldMax;
-    }
-    if (IsLogScale(scalePtr)) {
-        worldMin = log10(worldMin);
-        worldMax = log10(worldMax);
-        viewMin  = log10(viewMin);
-        viewMax  = log10(viewMax);
-    }
-    worldWidth = worldMax - worldMin;
-    viewWidth  = viewMax - viewMin;
-
-    /* Unlike horizontal axes, vertical axis values run opposite of the
-     * scrollbar first/last values.  So instead of pushing the axis minimum
-     * around, we move the maximum instead. */
-    if (AxisIsHorzontal(scalePtr) != ((scalePtr->flags & DECREASING) != 0)) {
-        axisOffset  = viewMin - worldMin;
-        axisScale = graphPtr->hScale;
-    } else {
-        axisOffset  = worldMax - viewMax;
-        axisScale = graphPtr->vScale;
-    }
-    if (objc == 4) {
-        Tcl_Obj *listObjPtr;
-        double first, last;
-
-        first = Clamp(axisOffset / worldWidth);
-        last = Clamp((axisOffset + viewWidth) / worldWidth);
-        listObjPtr = Tcl_NewListObj(0, NULL);
-        Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewDoubleObj(first));
-        Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewDoubleObj(last));
-        Tcl_SetObjResult(interp, listObjPtr);
-        return TCL_OK;
-    }
-    fract = axisOffset / worldWidth;
-    if (GetAxisScrollInfo(interp, objc, objv, &fract, 
-        viewWidth / worldWidth, scalePtr->scrollUnits, axisScale) != TCL_OK) {
+    if ((Tk_GetPixelsFromObj(interp, scalePtr->tkwin, objv[2], &sx) != TCL_OK)||
+        (Tk_GetPixelsFromObj(interp, scalePtr->tkwin, objv[3], &sy) != TCL_OK)){
         return TCL_ERROR;
     }
-    if (AxisIsHorzontal(scalePtr) != ((scalePtr->flags & DECREASING) != 0)) {
-        scalePtr->reqMin = (fract * worldWidth) + worldMin;
-        scalePtr->reqMax = scalePtr->reqMin + viewWidth;
-    } else {
-        scalePtr->reqMax = worldMax - (fract * worldWidth);
-        scalePtr->reqMin = scalePtr->reqMax - viewWidth;
+    memset(&switches, 0, sizeof(switches));
+    if (Blt_ParseSwitches(interp, identifySwitches, objc - 4, objv + 4, 
+        &switches, BLT_SWITCH_DEFAULTS) < 0) {
+        return TCL_ERROR;
     }
-    if (IsLogScale(scalePtr)) {
-        if (scalePtr->min > 0.0) {
-            scalePtr->reqMin = EXP10(scalePtr->reqMin);
-            scalePtr->reqMax = EXP10(scalePtr->reqMax);
-        } else {
-            scalePtr->reqMin = EXP10(scalePtr->reqMin) + scalePtr->min - 1.0;
-            scalePtr->reqMax = EXP10(scalePtr->reqMax) + scalePtr->min - 1.0;
-        }
+    if (switches.flags & IDENTIFY_ROOT) {
+        int rootX, rootY;
+        
+        Tk_GetRootCoords(scalePtr->tkwin, &rootX, &rootY);
+        sx -= rootX;
+        sy -= rootY;
+    }        
+    id = IdentifyPart(scalePtr, sx, sy);
+    return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * GetOp --
+ *
+ *    Returns the name of the picked axis (using the axis bind operation).
+ *    Right now, the only name accepted is "current".
+ *
+ * Results:
+ *    A standard TCL result.  The interpreter result will contain the name of
+ *    the axis.
+ *
+ *      pathName get min|max|current|rmin|rmax|
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static int
+GetOp(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
+{
+    return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * GetOp --
+ *
+ *    Returns the name of the picked axis (using the axis bind operation).
+ *    Right now, the only name accepted is "current".
+ *
+ * Results:
+ *    A standard TCL result.  The interpreter result will contain the name of
+ *    the axis.
+ *
+ *      pathName set value
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static int
+SetOp(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
+{
+    Scale *scalePtr = clientData;
+    double x;
+    
+    if (Blt_GetDoubleFromObj(interp, objv[2], &x) != TCL_OK) {
+        return TCL_ERROR;
     }
-    scalePtr->flags |= (GET_AXIS_GEOMETRY | LAYOUT_NEEDED);
-    EventuallyRedraw(graphPtr);
+    /* Automatically bound the value to the inner interval. */
+    if (x < scalePtr->innerLeft) {
+        x = scalePtr->innerLeft;
+    } else if (x > scalePtr->innerRight) {
+        x = scalePtr->innerRight;
+    }
+    scalePtr->currentValue = x;
+    EventuallyRedraw(scalePtr);
     return TCL_OK;
 }
 
@@ -7290,14 +5021,12 @@ static Blt_OpSpec scaleOps[] = {
     {"cget",         2, CgetOp,         3, 3, "option"},
     {"configure",    2, ConfigureOp,    2, 0, "?option value?..."},
     {"deactivate",   1, ActivateOp,     2, 2, ""},
-    {"identify",     1, IdentifyOp,     4, 4, "x y"},
-    {"invtransform", 1, InvTransformOp, 3, 3, "value"},
-    {"min",          1, MinOp,          2, 3, "?value?"},
-    {"max",          1, MaxOp,          2, 3, "?value?"},
-    {"nom",          1, NomOp,          2, 3, "?value?"},
+    {"get",          1, GetOp,          3, 3, "what"},
+    {"identify",     2, IdentifyOp,     4, 4, "x y"},
+    {"invtransform", 2, InvTransformOp, 3, 3, "value"},
     {"limits",       1, LimitsOp,       2, 2, ""},
+    {"set",          1, SetOp,          3, 3, "value"},
     {"transform",    1, TransformOp,    4, 4, "x y"},
-    {"view",         1, ViewOp,         2, 5, "?moveto fract? "},
 };
 
 static int numScaleOps = sizeof(scaleOps) / sizeof(Blt_OpSpec);
@@ -7447,390 +5176,8 @@ ScaleCmd(
 int
 Blt_ScaleCmdInitProc(Tcl_Interp *interp)
 {
-    static Blt_CmdSpec cmdSpec[] = {
+    static Blt_CmdSpec cmdSpec = {
         "scale", ScaleCmd 
     };
-    return Blt_InitCmd(interp, "::blt", cmdSpec);
-}
-
-
-
-/*
- *---------------------------------------------------------------------------
- *
- * MapHorizontalLayout --
- *
- *---------------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static void
-MapHorizontalLayout(Scale *scalePtr) 
-{
-    int cavityWidth, cavityHeigth;
-    int h;
-    TickLabel *minLabelPtr, *maxLabelPtr;
-    int leftPad, rightPad;
-
-    cavityWidth = Tk_Width(scalePtr->tkwin);
-    cavityHeight = Tk_Height(scalePtr->tkwin);
-    if (scalePtr->reqWidth > 0) {
-        cavityWidth = scalePtr->reqWidth;
-    }
-    cavityWidth -= 2 * scalePtr->inset;
-    cavityHeight -= 2 * scalePtr->inset;
-    
-    if (scalePtr->flags & DECREASING) {
-        minLabelPtr = Blt_Chain_LastLink(scalePtr->chain);
-        maxLabelPtr = Blt_Chain_FirstLink(scalePtr->chain);
-    } else {
-        maxLabelPtr = Blt_Chain_LastLink(scalePtr->chain);
-        minLabelPtr = Blt_Chain_FirstLink(scalePtr->chain);
-    }
-    leftPad = MAX(minLabelPtr->width / 2, scalePtr->arrowWidth / 2);
-    rightPad = MAX(maxLabelPtr->width / 2, scalePtr->arrowWidth / 2);
-
-    x1 = scalePtr->inset + leftPad;    
-    x2 = Tk_Width(scalePtr->tkwin) - (scalePtr->inset + rightPad);
-    AddAxisLine(scalePtr, x1, y, x2, y);
-
-    scalePtr->screenOffset = scalePtr->x1;
-    scalePtr->screenRange = scalePtr->x2 - scalePtr->x1;
-
-    h = 0;
-    h += PADY;
-    if (scalePtr->showFlags & SHOW_TITLE) {
-        h += scalePtr->titleHeight;
-    }
-    if (scalePtr->showFlags & SHOW_COLORBAR) {
-        h += scalePtr->colorbarHeight;
-    }
-    h += scalePtr->tickLineWidth + 2;
-    if (scalePtr->showFlags & SHOW_TICKS) {
-        h += scalePtr->tickLength;
-    }
-    if (scalePtr->showFlags & SHOW_TICKLABELS) {
-        h += scalePtr->tickHeight;
-    }
-    h += PADY;
-    scalePtr->height = h;
-    scalePtr->height = cavityWidth;
-    if (scalePtr->reqHeight > 0) {
-        scalePtr->height = scalePtr->reqHeight;
-    }
-    if ((scalePtr->width != Tk_ReqWidth(scalePtr->tkwin)) ||
-        (scalePtr->height != Tk_ReqHeight(scalePtr->tkwin))) {
-        Tk_GeometryRequest(scalePtr->tkwin, scalePtr->width, scalePtr->height);
-    }
-}    
-
-/*
- *---------------------------------------------------------------------------
- *
- * MapVerticalLayout --
- *
- *---------------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static void
-MapVerticalLayout(Scale *scalePtr) 
-{
-    int cavityWidth, cavityHeigth;
-    int w;
-    TickLabel *minLabelPtr, *maxLabelPtr;
-    int topPad, botPad;
-
-    cavityWidth = Tk_Width(scalePtr->tkwin);
-    cavityHeight = Tk_Height(scalePtr->tkwin);
-    if (scalePtr->reqWidth > 0) {
-        cavityWidth = scalePtr->reqWidth;
-    }
-    cavityWidth -= 2 * scalePtr->inset;
-    cavityHeight -= 2 * scalePtr->inset;
-    
-    if (scalePtr->showFlags & SHOW_TITLE) {
-        cavityHeight -= scalePtr->titleHeight;
-    }
-    if (scalePtr->flags & DECREASING) {
-        minLabelPtr = Blt_Chain_LastLink(scalePtr->chain);
-        maxLabelPtr = Blt_Chain_FirstLink(scalePtr->chain);
-    } else {
-        maxLabelPtr = Blt_Chain_LastLink(scalePtr->chain);
-        minLabelPtr = Blt_Chain_FirstLink(scalePtr->chain);
-    }
-    topPad = MAX(minLabelPtr->height / 2, scalePtr->arrowHeight / 2);
-    botPad = MAX(maxLabelPtr->height / 2, scalePtr->arrowHeight / 2);
-
-    scalePtr->y1 = scalePtr->inset + topPad;    
-    scalePtr->y2 = Tk_Height(scalePtr->tkwin) - (scalePtr->inset + botPad);
-
-    info.axisLength = y2 - y1;
-
-    scalePtr->screenOffset = scalePtr->y1;
-    scalePtr->screenRange = scalePtr->y2 - scalePtr->y1;
-
-    w = 0;
-    w += PADY;
-    if (scalePtr->showFlags & SHOW_COLORBAR) {
-        w += scalePtr->colorbarHeight;
-        info.colorbar = scalePtr->colorbarHeight;
-    }
-    w += scalePtr->tickLineWidth + 2;
-    if (scalePtr->showFlags & SHOW_TICKS) {
-        w += scalePtr->tickLength;
-        info.t1 = scalePtr->tickLength;
-        if (scalePtr->tickLineWidth > 0) {
-            info.t1 = scalePtr->tickLength;
-            info.t2 = (info.t1 * 10) / 15;
-        }
-        info.labelOffset = info.t1 + AXIS_PAD_TITLE;
-        if (scalePtr->flags & EXTERIOR) {
-            info.labelOffset += scalePtr->tickLineWidth;
-        }
-    }
-    if (scalePtr->showFlags & SHOW_TICKLABELS) {
-        w += scalePtr->tickHeight;
-    }
-    w += PADY;
-    scalePtr->width = w;
-    scalePtr->height = cavityWidth;
-    if (scalePtr->reqHeight > 0) {
-        scalePtr->height = scalePtr->reqHeight;
-    }
-    if ((scalePtr->width != Tk_ReqWidth(scalePtr->tkwin)) ||
-        (scalePtr->height != Tk_ReqHeight(scalePtr->tkwin))) {
-        Tk_GeometryRequest(scalePtr->tkwin, scalePtr->width, scalePtr->height);
-    }
-}    
-
-static void
-MakeSegments(Scale *scalePtr, AxisInfo *infoPtr)
-{
-    int arraySize;
-    int numMajorTicks, numMinorTicks;
-    Segment2d *segments;
-    Segment2d *s;
-
-    if (scalePtr->segments != NULL) {
-        Blt_Free(scalePtr->segments);
-    }
-    numMajorTicks = scalePtr->major.ticks.numSteps;
-    numMinorTicks = scalePtr->minor.ticks.numSteps;
-    arraySize = 1 + numMajorTicks + (numMajorTicks * (numMinorTicks + 1));
-    segments = Blt_AssertMalloc(arraySize * sizeof(Segment2d));
-    s = segments;
-    if (scalePtr->tickLineWidth > 0) {
-        /* Axis baseline */
-        MakeAxisLine(scalePtr, infoPtr->scaleLength, s);
-        s++;
-    }
-    if (scalePtr->flags & TICKLABELS) {
-        Blt_ChainLink link;
-        double labelPos;
-        Tick left, right;
-
-        link = Blt_Chain_FirstLink(scalePtr->tickLabels);
-        labelPos = (double)infoPtr->label;
-        for (left = FirstMajorTick(scalePtr); left.isValid; left = right) {
-            right = NextMajorTick(scalePtr);
-            if (right.isValid) {
-                Tick minor;
-
-                /* If this isn't the last major tick, add minor ticks. */
-                scalePtr->minor.ticks.range = right.value - left.value;
-                scalePtr->minor.ticks.initial = left.value;
-                for (minor = FirstMinorTick(scalePtr); minor.isValid; 
-                     minor = NextMinorTick(scalePtr)) {
-                    if (InRange(minor.value, &scalePtr->tickRange)) {
-                        /* Add minor tick. */
-                        MakeTick(scalePtr, minor.value, infoPtr->t2, 
-                                infoPtr->scaleLength, s);
-                        s++;
-                    }
-                }        
-            }
-            if (InRange(left.value, &scalePtr->tickRange)) {
-                double mid;
-
-                /* Add major tick. This could be the last major tick. */
-                MakeTick(scalePtr, left.value, infoPtr->t1,
-                        infoPtr->scaleLength, s);
-                mid = left.value;
-                if ((scalePtr->flags & LABELOFFSET) && (right.isValid)) {
-                    mid = (right.value - left.value) * 0.5;
-                }
-                if (InRange(mid, &scalePtr->tickRange)) {
-                    TickLabel *labelPtr;
-
-                    labelPtr = Blt_Chain_GetValue(link);
-                    link = Blt_Chain_NextLink(link);
-                    
-                    /* Set the position of the tick label. */
-                    if (HORIZONTAL(scalePtr->marginPtr)) {
-                        labelPtr->anchorPos.x = s->p.x;
-                        labelPtr->anchorPos.y = labelPos;
-                    } else {
-                        labelPtr->anchorPos.x = labelPos;
-                        labelPtr->anchorPos.y = s->p.y;
-                    }
-                }
-                s++;
-            }
-        }
-    }
-    scalePtr->segments = segments;
-    scalePtr->numSegments = s - segments;
-#ifdef notdef
-    fprintf(stderr,
-            "scale=%s numSegments=%d, arraySize=%d numMajor=%d numMinor=%d\n",
-            scalePtr->obj.name, scalePtr->numSegments, arraySize,
-            numMajorTicks, numMinorTicks);
-#endif
-    assert(scalePtr->numSegments <= arraySize);
-}
-
-
-
-/*
- *---------------------------------------------------------------------------
- *
- * AxisOffsets --
- *
- *      Determines the sides of the axis, major and minor ticks, and title
- *      of the axis.
- *
- * Results:
- *      None.
- *
- *---------------------------------------------------------------------------
- */
-static void
-AxisOffsets(Axis *scalePtr, AxisInfo *infoPtr)
-{
-    int pad;                            /* Offset of axis from interior
-                                         * region. This includes a possible
-                                         * border and the axis line
-                                         * width. */
-    int axisLine;
-    int t1, t2, labelOffset;
-    int tickLabel, axisPad;
-    int inset, mark;
-    int x, y;
-    float fangle;
-
-    tickLabel = axisLine = t1 = t2 = 0;
-    labelOffset = AXIS_PAD_TITLE;
-    if (scalePtr->tickLineWidth > 0) {
-        if (scalePtr->flags & SHOW_TICKS) {
-            t1 = scalePtr->tickLength;
-            t2 = (t1 * 10) / 15;
-        }
-        labelOffset = t1 + AXIS_PAD_TITLE;
-        if (scalePtr->flags & EXTERIOR) {
-            labelOffset += scalePtr->tickLineWidth;
-        }
-    }
-    axisPad = 0;
-    /* Adjust offset for the interior border width and the line width */
-    pad = 0;                            /* FIXME: test */
-    /*
-     * Pre-calculate the x-coordinate positions of the axis, tick labels,
-     * and the individual major and minor ticks.
-     */
-    inset = pad + scalePtr->tickLineWidth / 2;
-    if (HORIZONTAL(scalePtr)) {
-        /*
-         *  ----------- bottom + plot borderwidth
-         *      mark --------------------------------------------
-         *          ===================== axisLine (linewidth)
-         *                   tick
-         *                  title
-         *
-         *          ===================== axisLine (linewidth)
-         *  ----------- bottom + plot borderwidth
-         *      mark --------------------------------------------
-         *                   tick
-         *                  title
-         */
-        axisLine = scalePtr->y2;
-        if (scalePtr->colorbar.thickness > 0) {
-            axisLine += scalePtr->colorbar.thickness + COLORBAR_PAD;
-        }
-        if (scalePtr->flags & EXTERIOR) {
-            axisLine += axisPad + scalePtr->tickLineWidth / 2;
-            axisLine += 2;
-            tickLabel = axisLine + 2;
-            if (scalePtr->tickLineWidth > 0) {
-                tickLabel += scalePtr->tickLength;
-            }
-        } else {
-            axisLine -= axisPad + scalePtr->tickLineWidth / 2;
-            tickLabel = scalePtr->y2 + 2;
-            axisLine--;
-        }
-        fangle = FMOD(scalePtr->tickAngle, 90.0f);
-        if (fangle == 0.0) {
-            scalePtr->tickAnchor = TK_ANCHOR_N;
-        } else {
-            int quadrant;
-
-            quadrant = (int)(scalePtr->tickAngle / 90.0);
-            if ((quadrant == 0) || (quadrant == 2)) {
-                scalePtr->tickAnchor = TK_ANCHOR_NE;
-            } else {
-                scalePtr->tickAnchor = TK_ANCHOR_NW;
-            }
-        }
-        scalePtr->left = scalePtr->screenMin - inset - 2;
-        scalePtr->right = scalePtr->screenMin + scalePtr->screenRange + inset-1;
-        scalePtr->top = scalePtr->y2 + labelOffset - t1;
-        mark = scalePtr->y2;
-        scalePtr->bottom = mark + scalePtr->height - 1;
-        x = (scalePtr->right + scalePtr->left) / 2;
-        y = mark + scalePtr->height - AXIS_PAD_TITLE;
-        scalePtr->titleAnchor = TK_ANCHOR_S; 
-        scalePtr->titlePos.x = x;
-        scalePtr->titlePos.y = y;
-        infoPtr->colorbar = axisLine - scalePtr->colorbar.thickness;
-    } else {
-        axisLine = scalePtr->x2;
-        if (scalePtr->colorbar.thickness > 0) {
-            axisLine += scalePtr->colorbar.thickness + COLORBAR_PAD;
-        }
-        if (scalePtr->flags & EXTERIOR) {
-            axisLine += axisPad + scalePtr->tickLineWidth / 2;
-            tickLabel = axisLine + 2;
-            if (scalePtr->tickLineWidth > 0) {
-                tickLabel += scalePtr->tickLength;
-            }
-            axisLine++;
-        } else {
-            axisLine -= axisPad + scalePtr->tickLineWidth / 2;
-            tickLabel = axisLine + 2;
-        }
-        mark = scalePtr->x2 + pad;
-        scalePtr->tickAnchor = TK_ANCHOR_W;
-        scalePtr->left = mark;
-        scalePtr->right = mark + scalePtr->width - 1;
-        scalePtr->top = scalePtr->screenMin - inset - 2;
-        scalePtr->bottom = scalePtr->screenMin + scalePtr->screenRange + inset-1;
-        x = mark + scalePtr->width - AXIS_PAD_TITLE;
-        y = (scalePtr->bottom + scalePtr->top) / 2;
-        scalePtr->titleAnchor = TK_ANCHOR_E;
-        scalePtr->titlePos.x = x;
-        scalePtr->titlePos.y = y;
-        infoPtr->colorbar = axisLine - scalePtr->colorbar.thickness;
-    }
-    infoPtr->axisLength = axisLine;
-    infoPtr->t1 = axisLine + t1;
-    infoPtr->t2 = axisLine + t2;
-    if (tickLabel > 0) {
-        infoPtr->label = tickLabel;
-    } else {
-        infoPtr->label = axisLine + labelOffset;
-    }
-    if ((scalePtr->flags & EXTERIOR) == 0) {
-        /*infoPtr->label = axisLine + labelOffset - t1; */
-        infoPtr->t1 = axisLine - t1;
-        infoPtr->t2 = axisLine - t2;
-    } 
+    return Blt_InitCmd(interp, "::blt", &cmdSpec);
 }
