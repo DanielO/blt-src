@@ -106,6 +106,9 @@ static Tcl_AppInitProc *cmdProcs[] =
 #ifndef NO_PRINTER
     Blt_PrinterCmdInitProc,
 #endif
+#ifndef NO_SCALE
+    Blt_ScaleCmdInitProc,
+#endif
 #ifndef NO_SCROLLSET
     Blt_ScrollsetCmdInitProc,
 #endif

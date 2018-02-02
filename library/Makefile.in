@@ -41,6 +41,7 @@ FILES = \
 		$(srcdir)/bltPalette.tcl \
 		$(srcdir)/bltPaneset.tcl \
 		$(srcdir)/bltPushButton.tcl \
+		$(srcdir)/bltScale.tcl \
 		$(srcdir)/bltScrollbar.tcl \
 		$(srcdir)/bltScrollset.tcl \
 		$(srcdir)/bltTableView.tcl \

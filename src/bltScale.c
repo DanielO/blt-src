@@ -465,11 +465,11 @@ typedef struct _Scale {
 
     GC tickGC;                          /* Graphics context for axis and
                                          * tick labels */
-    GC disabledTickGC;
     GC axisLineGC;                      /* For the axis line. */
     GC rangeGC;                         /* For the inner interval line. */
     GC markGC;                          /* For the current value line. */
     GC drawGC;
+    GC disabledTickGC;
 
     const char *title;                  /* Title of the scale. */
     int titleX, titleY, titleWidth, titleHeight;  
@@ -503,12 +503,13 @@ static double logTable[] = {
 #define DEF_ACTIVE_BG           STD_ACTIVE_BACKGROUND
 #define DEF_ACTIVE_FG           STD_ACTIVE_FOREGROUND
 #define DEF_ACTIVE_GRIP_BG      STD_ACTIVE_BACKGROUND
+#define DEF_ACTIVE_GRIP_BG      STD_ACTIVE_BACKGROUND
 #define DEF_ACTIVE_GRIP_FG      STD_ACTIVE_FOREGROUND
-#define DEF_ACTIVE_MAXARROW_COLOR STD_ACTIVE_BACKGROUND
-#define DEF_ACTIVE_MINARROW_COLOR STD_ACTIVE_BACKGROUND
+#define DEF_ACTIVE_MAXARROW_COLOR RGB_BLUE
+#define DEF_ACTIVE_MINARROW_COLOR RGB_RED3
 #define DEF_ACTIVE_RELIEF       "flat"
-#define DEF_AXIS_LINEWIDTH      "1"
-#define DEF_NORMAL_BG          STD_NORMAL_BACKGROUND
+#define DEF_AXISLINE_COLOR      RGB_BLACK
+#define DEF_AXISLINE_WIDTH      "1"
 #define DEF_BORDERWIDTH         "0"
 #define DEF_CHECKLIMITS         "0"
 #define DEF_COLORBAR_THICKNESS  "0"
@@ -517,18 +518,23 @@ static double logTable[] = {
 #define DEF_DISABLED_BG         STD_DISABLED_BACKGROUND
 #define DEF_DISABLED_FG         STD_DISABLED_FOREGROUND
 #define DEF_DIVISIONS           "10"
-#define DEF_NORMAL_FG          RGB_BLACK
 #define DEF_FORMAT_COMMAND      (char *)NULL
+#define DEF_GRIP_BG             STD_NORMAL_BACKGROUND
 #define DEF_HIDE                ""
+#define DEF_HEIGHT              "0"
 #define DEF_LOOSE               "0"
+#define DEF_MARK_COLOR          RGB_BLACK
 #define DEF_MAX                 "10.0"
 #define DEF_MIN                 "1.0"
+#define DEF_NORMAL_BG          STD_NORMAL_BACKGROUND
+#define DEF_NORMAL_FG          RGB_BLACK
 #define DEF_NORMAL_GRIP_BG      STD_NORMAL_BACKGROUND
 #define DEF_NORMAL_GRIP_FG      STD_NORMAL_FORERGOUND
-#define DEF_NORMAL_MAXARROW_COLOR STD_NORMAL_BACKGROUND
-#define DEF_NORMAL_MINARROW_COLOR STD_NORMAL_BACKGROUND
+#define DEF_NORMAL_MAXARROW_COLOR RGB_BLUE
+#define DEF_NORMAL_MINARROW_COLOR RGB_RED3
 #define DEF_ORIENT              "horizontal"
 #define DEF_PALETTE             (char *)NULL
+#define DEF_RANGE_COLOR         RGB_BLACK
 #define DEF_RELIEF              "flat"
 #define DEF_SCALE               "linear"
 #define DEF_SHOW                "all"
@@ -538,14 +544,18 @@ static double logTable[] = {
 #define DEF_TAGS                "all"
 #define DEF_TICK_ANCHOR         "c"
 #define DEF_TICK_ANGLE          "0.0"
+#define DEF_TICK_COLOR          RGB_BLACK
 #define DEF_TICK_DIRECTION      "out"
-#define DEF_TICK_FONT            STD_FONT_NUMBERS
-#define DEF_TICK_LENGTH          "4"
-#define DEF_TICK_LINEWIDTH           "1"
+#define DEF_TICK_FONT           STD_FONT_NUMBERS
+#define DEF_TICK_LABEL_COLOR    RGB_BLACK
+#define DEF_TICK_LENGTH         "4"
+#define DEF_TICK_LINEWIDTH      "1"
 #define DEF_TITLE               (char *)NULL
 #define DEF_TITLE_COLOR         RGB_BLACK
 #define DEF_TITLE_FONT          STD_FONT_NORMAL
 #define DEF_TITLE_JUSTIFY       "c"
+#define DEF_VALUE_COLOR          RGB_BLACK
+#define DEF_WIDTH               "0"
 
 static Blt_OptionParseProc ObjToLimit;
 static Blt_OptionPrintProc LimitToObj;
@@ -601,10 +611,10 @@ static Blt_ConfigSpec configSpecs[] =
 {
     {BLT_CONFIG_BACKGROUND, "-activebackground", "activeBackground", 
         "ActiveBackground", DEF_ACTIVE_BG, Blt_Offset(Scale, activeBg),
-        BLT_CONFIG_NULL_OK},
+        0},
     {BLT_CONFIG_BACKGROUND, "-activegripbackground", "activeGripBackground",
         "ActiveGripBackground", DEF_ACTIVE_GRIP_BG, 
-        Blt_Offset(Scale, activeGripBg), BLT_CONFIG_NULL_OK},
+        Blt_Offset(Scale, activeGripBg), 0},
     {BLT_CONFIG_COLOR, "-activemaxarrowcolor", "activeMaxArrowColor", 
         "ActiveMaxArrowColor", DEF_ACTIVE_MAXARROW_COLOR,  
         Blt_Offset(Scale, activeMaxArrowColor), 0}, 
@@ -614,11 +624,13 @@ static Blt_ConfigSpec configSpecs[] =
     {BLT_CONFIG_RELIEF, "-activerelief", "activeRelief", "Relief",
         DEF_ACTIVE_RELIEF, Blt_Offset(Scale, activeRelief),
         BLT_CONFIG_DONT_SET_DEFAULT}, 
+    {BLT_CONFIG_COLOR, "-axislinecolor", "axisLineColor", "AxisLineColor", 
+        DEF_AXISLINE_COLOR,  Blt_Offset(Scale, axisLineColor), 0}, 
     {BLT_CONFIG_PIXELS_NNEG, "-axislinewidth", "axisLineWidth", "AxisLineWidth",
-        DEF_AXIS_LINEWIDTH, Blt_Offset(Scale, axisLineWidth),
+        DEF_AXISLINE_WIDTH, Blt_Offset(Scale, axisLineWidth),
         BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_BACKGROUND, "-background", "background", "Background",
-        DEF_NORMAL_BG, Blt_Offset(Scale, normalBg), BLT_CONFIG_NULL_OK},
+        DEF_NORMAL_BG, Blt_Offset(Scale, normalBg), 0},
     {BLT_CONFIG_SYNONYM, "-bg", "background"},
     {BLT_CONFIG_SYNONYM, "-bindtags", "tags"},
     {BLT_CONFIG_SYNONYM, "-bd", "borderWidth"},
@@ -637,7 +649,7 @@ static Blt_ConfigSpec configSpecs[] =
     {BLT_CONFIG_SYNONYM, "-descending", "decreasing"},
     {BLT_CONFIG_BACKGROUND, "-disabledbackground", "disabledBackground", 
         "DisabledBackground", DEF_DISABLED_BG, 
-        Blt_Offset(Scale, disabledBg), BLT_CONFIG_NULL_OK},
+        Blt_Offset(Scale, disabledBg), 0},
     {BLT_CONFIG_COLOR, "-disabledforeground", "disabledForeground",
         "DisabledForeground", DEF_ACTIVE_FG,
         Blt_Offset(Scale, disabledFgColor), 0}, 
@@ -645,6 +657,10 @@ static Blt_ConfigSpec configSpecs[] =
         Blt_Offset(Scale, reqNumMajorTicks), BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_SYNONYM, "-fg", "color"},
     {BLT_CONFIG_SYNONYM, "-foreground", "color"},
+    {BLT_CONFIG_BACKGROUND, "-gripbackground", "gripBackground",
+       "GripBackground", DEF_GRIP_BG, Blt_Offset(Scale, normalGripBg), 0},
+    {BLT_CONFIG_PIXELS_NNEG, "-height", "height", "Height", DEF_WIDTH, 
+        Blt_Offset(Scale, reqHeight), 0},
     {BLT_CONFIG_CUSTOM, "-hide", "hide", "Hide", DEF_HIDE, 
         Blt_Offset(Scale, flags), BLT_CONFIG_DONT_SET_DEFAULT, 
         &hideFlagsOption},
@@ -675,6 +691,8 @@ static Blt_ConfigSpec configSpecs[] =
         Blt_Offset(Scale, reqInnerRight), 0, &limitOption},
     {BLT_CONFIG_CUSTOM, "-rangemin", "reqInnerLeft", "RangeMin", (char *)NULL, 
         Blt_Offset(Scale, reqInnerLeft), 0, &limitOption},
+    {BLT_CONFIG_COLOR, "-markcolor", "markColor", "MarkColor", 
+        DEF_MARK_COLOR,  Blt_Offset(Scale, markColor), 0}, 
     {BLT_CONFIG_CUSTOM, "-minorticks", "minorTicks", "MinorTicks",
         (char *)NULL, Blt_Offset(Scale, minor), 
         BLT_CONFIG_NULL_OK, &minorTicksOption},
@@ -683,13 +701,16 @@ static Blt_ConfigSpec configSpecs[] =
         &orientOption},
     {BLT_CONFIG_CUSTOM, "-palette", "palette", "Palette", DEF_PALETTE, 
         Blt_Offset(Scale, palette), 0, &paletteOption},
+    {BLT_CONFIG_COLOR, "-rangecolor", "rangeColor", "RangeColor", 
+        DEF_RANGE_COLOR,  Blt_Offset(Scale, rangeColor), 0}, 
     {BLT_CONFIG_RELIEF, "-relief", "relief", "Relief", DEF_RELIEF,
         Blt_Offset(Scale, relief), BLT_CONFIG_DONT_SET_DEFAULT},
-    {BLT_CONFIG_CUSTOM, "-scale", "scale", "Scale", DEF_SCALE, 0,
+    {BLT_CONFIG_CUSTOM, "-scale", "scale", "Scale", DEF_SCALE,
+        Blt_Offset(Scale, scale),
         BLT_CONFIG_DONT_SET_DEFAULT, &scaleOption},
-    {BLT_CONFIG_CUSTOM, "-show", "show", "Show",
-        DEF_SHOW, Blt_Offset(Scale, flags),
-        BLT_CONFIG_DONT_SET_DEFAULT, &showFlagsOption},
+    {BLT_CONFIG_CUSTOM, "-show", "show", "Show",  DEF_SHOW,
+        Blt_Offset(Scale, flags), BLT_CONFIG_DONT_SET_DEFAULT,
+        &showFlagsOption},
     {BLT_CONFIG_CUSTOM, "-state", "state", "State", DEF_STATE, 
         Blt_Offset(Scale, flags), BLT_CONFIG_DONT_SET_DEFAULT, &stateOption},
     {BLT_CONFIG_DOUBLE, "-stepsize", "stepSize", "StepSize",
@@ -701,11 +722,15 @@ static Blt_ConfigSpec configSpecs[] =
         DEF_TICK_ANCHOR, Blt_Offset(Scale, reqTickAnchor), 0},
     {BLT_CONFIG_FLOAT, "-tickangle", "tickAngle", "TickAngle", DEF_TICK_ANGLE,
         Blt_Offset(Scale, tickAngle), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_COLOR, "-tickcolor", "tickColor", "TickColor", 
+        DEF_TICK_COLOR,  Blt_Offset(Scale, tickColor), 0}, 
     {BLT_CONFIG_CUSTOM, "-tickdirection", "tickDirection", "TickDirection",
         DEF_TICK_DIRECTION, Blt_Offset(Scale, flags),
         BLT_CONFIG_DONT_SET_DEFAULT, &tickDirectionOption},
     {BLT_CONFIG_FONT, "-tickfont", "tickFont", "Font",
         DEF_TICK_FONT, Blt_Offset(Scale, tickFont), 0},
+    {BLT_CONFIG_COLOR, "-ticklabelcolor", "tickLabelColor", "TickLabelColor", 
+        DEF_TICK_LABEL_COLOR,  Blt_Offset(Scale, tickLabelColor), 0}, 
     {BLT_CONFIG_PIXELS_NNEG, "-ticklength", "tickLength", "TickLength",
         DEF_TICK_LENGTH, Blt_Offset(Scale, tickLength), 
         BLT_CONFIG_DONT_SET_DEFAULT},
@@ -721,6 +746,10 @@ static Blt_ConfigSpec configSpecs[] =
         BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_FONT, "-valuefont", "valueFont", "ValueFont",
         DEF_TICK_FONT, Blt_Offset(Scale, valueFont), 0},
+    {BLT_CONFIG_COLOR, "-valuecolor", "valueColor", "ValueColor", 
+        DEF_VALUE_COLOR,  Blt_Offset(Scale, valueColor), 0}, 
+    {BLT_CONFIG_PIXELS_NNEG, "-width", "width", "Width", DEF_WIDTH, 
+        Blt_Offset(Scale, reqWidth), 0},
     {BLT_CONFIG_END, NULL, NULL, NULL, NULL, 0, 0}
 };
 
@@ -740,12 +769,6 @@ static Blt_SwitchSpec identifySwitches[] =
 /* Forward declarations */
 static Tcl_IdleProc DisplayProc;
 static Tcl_FreeProc FreeScale;
-
-INLINE static double
-Clamp(double x) 
-{
-    return (x < 0.0) ? 0.0 : (x > 1.0) ? 1.0 : x;
-}
 
 static void
 SetAxisRange(AxisRange *rangePtr, double min, double max)
@@ -1371,7 +1394,7 @@ ObjToShowFlags(ClientData clientData, Tcl_Interp *interp, Tk_Window tkwin,
         unsigned int flag;
         int length;
 
-        string = Tcl_GetStringFromObj(objPtr, &length);
+        string = Tcl_GetStringFromObj(objv[i], &length);
         c = string[0];
 
         if ((c == 'a') && (length > 1) && 
@@ -1402,7 +1425,7 @@ ObjToShowFlags(ClientData clientData, Tcl_Interp *interp, Tk_Window tkwin,
                    (strncmp(string, "ticklabels", length) == 0)) {
             flag = SHOW_TICKLABELS;
         } else {
-            Tcl_AppendResult(interp, "bad scale value \"", string, 
+            Tcl_AppendResult(interp, "bad show flags value \"", string, 
                 "\": should be log, linear, or time", (char *)NULL);
             return TCL_ERROR;
         }
@@ -2583,7 +2606,7 @@ DayTicks(Scale *scalePtr)
     scalePtr->major.numSteps = numTicks;
     scalePtr->major.timeUnits = UNITS_DAYS;
     scalePtr->major.range = tickMax - tickMin;
-    scalePtr->major.axisScale = SCALE_TIME;
+    scalePtr->major.axisScale = AXIS_TIME;
     scalePtr->major.fmt = "%h %d";
     scalePtr->minor.step = SECONDS_HOUR * 6;
     scalePtr->minor.initial = 0;
@@ -3538,6 +3561,7 @@ ResetGCs(Scale *scalePtr)
     gcValues.font = Blt_Font_Id(scalePtr->tickFont);
     gcValues.line_width = scalePtr->tickLineWidth;
     gcValues.cap_style = CapProjecting;
+    newGC = Tk_GetGC(scalePtr->tkwin, gcMask, &gcValues);
     if (scalePtr->disabledTickGC != NULL) {
         Tk_FreeGC(scalePtr->display, scalePtr->disabledTickGC);
     }
@@ -3551,6 +3575,7 @@ ResetGCs(Scale *scalePtr)
     gcValues.line_width = scalePtr->tickLineWidth;
     gcValues.dash_offset = scalePtr->markDashOffset;
     gcValues.cap_style = CapProjecting;
+    newGC = Tk_GetGC(scalePtr->tkwin, gcMask, &gcValues);
     if (scalePtr->markGC != NULL) {
         Tk_FreeGC(scalePtr->display, scalePtr->markGC);
     }
@@ -3596,7 +3621,6 @@ DestroyScale(Scale *scalePtr)
     if (scalePtr->bindTable != NULL) {
         Blt_DeleteBindings(scalePtr->bindTable, scalePtr);
     }
-
     if (scalePtr->tickGC != NULL) {
         Tk_FreeGC(scalePtr->display, scalePtr->tickGC);
     }
@@ -3649,17 +3673,23 @@ NewScale(Tcl_Interp *interp, Tk_Window tkwin)
     scalePtr->tkwin = tkwin;
     scalePtr->relief = TK_RELIEF_FLAT;
     scalePtr->activeRelief = TK_RELIEF_RAISED;
+    scalePtr->gripRelief = TK_RELIEF_RAISED;
+    scalePtr->relief = TK_RELIEF_RAISED;
+    scalePtr->gripBorderWidth = 2;
+    scalePtr->borderWidth = 2;
     scalePtr->flags |= TIGHT;
     scalePtr->reqNumMinorTicks = 2;
     scalePtr->reqNumMajorTicks = 10;
     scalePtr->tickLength = 8;
-    scalePtr->colorbar.thickness = 0;
     scalePtr->outerLeft = 0.1;
     scalePtr->outerRight = 1.0;
     scalePtr->flags = (SHOW_ALL | AUTO_MAJOR| AUTO_MINOR | EXTERIOR);
     scalePtr->tickLabels = Blt_Chain_Create();
     scalePtr->tickLineWidth = 1;
+    scalePtr->arrowWidth = 20, scalePtr->arrowHeight = 30;
+    scalePtr->gripWidth = 10, scalePtr->gripHeight = 30;
     Blt_SetWindowInstanceData(tkwin, scalePtr);
+    scalePtr->mark = 0.53;
     return scalePtr;
 }
 
@@ -4419,17 +4449,17 @@ DrawScale(Scale *scalePtr, Drawable drawable)
         Blt_Ts_InitStyle(ts);
         Blt_Ts_SetFont(ts, scalePtr->titleFont);
         Blt_Ts_SetPadding(ts, 1, 2, 0, 0);
-        Blt_Ts_SetAnchor(ts, scalePtr->titleAnchor);
+        Blt_Ts_SetAnchor(ts, TK_ANCHOR_NW);
         Blt_Ts_SetForeground(ts, titleFg);
         Blt_Ts_SetMaxLength(ts, scalePtr->width - 2 * scalePtr->inset);
         Blt_Ts_DrawText(scalePtr->tkwin, drawable, scalePtr->title, -1, &ts, 
                 scalePtr->titleX, scalePtr->titleY);
     }
     /* Axis line */
-    XDrawRectangle(scalePtr->display, drawable, scalePtr->axisLineGC, 
+    XFillRectangle(scalePtr->display, drawable, scalePtr->axisLineGC, 
                    scalePtr->x1, scalePtr->y1,
                    scalePtr->x2 - scalePtr->x1 + 1, 
-                   scalePtr->y2 - scalePtr->y2 + 1);
+                   scalePtr->y2 - scalePtr->y1 + 1);
     /* Draw inner interval. */
     if (HORIZONTAL(scalePtr)) {
         int x1, x2, y;
@@ -4667,6 +4697,7 @@ DisplayProc(ClientData clientData)
          * is something reasonable. */
         return;
     }
+    ComputeGeometry(scalePtr);
     scalePtr->width = Tk_Width(tkwin);
     scalePtr->height = Tk_Height(tkwin);
     if (HORIZONTAL(scalePtr)) {
@@ -4704,8 +4735,8 @@ DisplayProc(ClientData clientData)
         Tk_DrawFocusHighlight(scalePtr->tkwin, gc, scalePtr->highlightWidth,
             pixmap);
     }
-    XCopyArea(scalePtr->display, pixmap, Tk_WindowId(tkwin),
-        scalePtr->drawGC, 0, 0, scalePtr->width, scalePtr->height, 0, 0);
+    XCopyArea(scalePtr->display, pixmap, Tk_WindowId(scalePtr->tkwin),
+        scalePtr->markGC, 0, 0, scalePtr->width, scalePtr->height, 0, 0);
     Tk_FreePixmap(scalePtr->display, pixmap);
 }
 
