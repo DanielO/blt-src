@@ -1912,7 +1912,7 @@ Blt_InvVMap(Axis *axisPtr, double y) /* Screen coordinate */
  *
  *---------------------------------------------------------------------------
  */
-static INLINE double
+INLINE static double
 ConvertToScreenX(Axis *axisPtr, double x)
 {
     /* Map graph coordinate to normalized coordinates [0..1] */
@@ -1937,7 +1937,7 @@ ConvertToScreenX(Axis *axisPtr, double x)
  *
  *---------------------------------------------------------------------------
  */
-static INLINE double
+INLINE static double
 ConvertToScreenY(Axis *axisPtr, double y)
 {
     /* Map graph coordinate to normalized coordinates [0..1] */
