@@ -299,15 +299,15 @@ typedef struct {
  *---------------------------------------------------------------------------
  */
 typedef struct _Scale {
+    Display *display;                   /* Display containing widget;
+                                         * needed, among other things, to
+                                         * release resources after tkwin
+                                         * has already gone away. */ 
     Tk_Window tkwin;                    /* Window that embodies the widget.
                                          * NULL means that the window has
                                          * been destroyed but the data
                                          * structures haven't yet been
                                          * cleaned up.*/
-    Display *display;                   /* Display containing widget;
-                                         * needed, among other things, to
-                                         * release resources after tkwin
-                                         * has already gone away. */
     Tcl_Interp *interp;                 /* Interpreter associated with
                                          * widget. */
     Tcl_Command cmdToken;               /* Token for widget's command. */
@@ -507,7 +507,7 @@ static double logTable[] = {
 #define DEF_ACTIVE_GRIP_FG      STD_ACTIVE_FOREGROUND
 #define DEF_ACTIVE_MAXARROW_COLOR RGB_BLUE
 #define DEF_ACTIVE_MINARROW_COLOR RGB_RED3
-#define DEF_ACTIVE_RELIEF       "flat"
+#define DEF_ACTIVE_RELIEF       "raised"
 #define DEF_AXISLINE_COLOR      RGB_BLACK
 #define DEF_AXISLINE_WIDTH      "1"
 #define DEF_BORDERWIDTH         "0"
@@ -651,7 +651,7 @@ static Blt_ConfigSpec configSpecs[] =
         "DisabledBackground", DEF_DISABLED_BG, 
         Blt_Offset(Scale, disabledBg), 0},
     {BLT_CONFIG_COLOR, "-disabledforeground", "disabledForeground",
-        "DisabledForeground", DEF_ACTIVE_FG,
+        "DisabledForeground", DEF_DISABLED_FG,
         Blt_Offset(Scale, disabledFgColor), 0}, 
     {BLT_CONFIG_INT, "-divisions", "division", "Divisions", DEF_DIVISIONS,
         Blt_Offset(Scale, reqNumMajorTicks), BLT_CONFIG_DONT_SET_DEFAULT},
@@ -670,8 +670,9 @@ static Blt_ConfigSpec configSpecs[] =
     {BLT_CONFIG_PIXELS_NNEG, "-ticklinewidth", "tickLineWidth", "TickLineWidth",
         DEF_TICK_LINEWIDTH, Blt_Offset(Scale, tickLineWidth),
         BLT_CONFIG_DONT_SET_DEFAULT},
-    {BLT_CONFIG_BITMASK_INVERT, "-loose", "loose", "Loose", DEF_LOOSE, 0, 
-        BLT_CONFIG_DONT_SET_DEFAULT, (Blt_CustomOption *)TIGHT},
+    {BLT_CONFIG_BITMASK_INVERT, "-loose", "loose", "Loose", DEF_LOOSE,
+         Blt_Offset(Scale, flags), BLT_CONFIG_DONT_SET_DEFAULT,
+         (Blt_CustomOption *)TIGHT},
     {BLT_CONFIG_CUSTOM, "-majorticks", "majorTicks", "MajorTicks",
         (char *)NULL, Blt_Offset(Scale, major), BLT_CONFIG_NULL_OK,
         &majorTicksOption},
@@ -3542,12 +3543,20 @@ ResetGCs(Scale *scalePtr)
     XGCValues gcValues;
     unsigned long gcMask;
     
+    /* Disabled GC  */
+    gcMask = GCForeground;
+    gcValues.foreground = scalePtr->disabledFgColor->pixel;
+    newGC = Tk_GetGC(scalePtr->tkwin, gcMask, &gcValues);
+    if (scalePtr->disabledGC != NULL) {
+        Tk_FreeGC(scalePtr->display, scalePtr->disabledGC);
+    }
+    scalePtr->disabledGC = newGC;
+
     /* Tick GC  */
     gcMask = (GCForeground | GCLineWidth | GCCapStyle);
     gcValues.foreground = scalePtr->tickColor->pixel;
     gcValues.line_width = scalePtr->tickLineWidth;
     gcValues.cap_style = CapProjecting;
-
     newGC = Tk_GetGC(scalePtr->tkwin, gcMask, &gcValues);
     if (scalePtr->tickGC != NULL) {
         Tk_FreeGC(scalePtr->display, scalePtr->tickGC);
@@ -3669,11 +3678,12 @@ NewScale(Tcl_Interp *interp, Tk_Window tkwin)
     Tk_SetClass(tkwin, "BltScale");
     scalePtr->display = Tk_Display(tkwin);
     scalePtr->interp = interp;
+    fprintf(stderr, "Setting scale tkwin to %p (%s)\n",
+            tkwin, Tk_PathName(tkwin));
     scalePtr->tkwin = tkwin;
     scalePtr->relief = TK_RELIEF_FLAT;
     scalePtr->activeRelief = TK_RELIEF_RAISED;
     scalePtr->gripRelief = TK_RELIEF_RAISED;
-    scalePtr->relief = TK_RELIEF_RAISED;
     scalePtr->gripBorderWidth = 2;
     scalePtr->borderWidth = 2;
     scalePtr->flags |= TIGHT;
@@ -3795,11 +3805,11 @@ ConfigureScale(
     if (angle < 0.0f) {
         angle += 360.0f;
     }
+    scalePtr->tickAngle = angle;
     if (scalePtr->normalBg != NULL) {
         Blt_Bg_SetChangedProc(scalePtr->normalBg, BackgroundChangedProc, 
                 scalePtr);
     }
-    scalePtr->tickAngle = angle;
     ResetGCs(scalePtr);
 
     scalePtr->titleWidth = scalePtr->titleHeight = 0;
