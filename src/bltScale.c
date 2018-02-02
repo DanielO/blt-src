@@ -168,11 +168,13 @@ static const int numDaysYear[2] = { 365, 366 };
 
 typedef enum ScaleParts {
     PICK_NONE,
-    PICK_TITLE,
-    PICK_MINARROW,
-    PICK_MAXARROW,
-    PICK_GRIP,
+    PICK_AXIS,
     PICK_COLORBAR,
+    PICK_GRIP,
+    PICK_MARK,
+    PICK_MAXARROW,
+    PICK_MINARROW,
+    PICK_TITLE,
 } ScalePart;
 
 typedef enum _AxisScales {
@@ -432,10 +434,10 @@ typedef struct _Scale {
     XColor *activeGripFgColor;
     XColor *normalGripFgColor;
 
-    XColor *normalMinArrowColor;
-    XColor *normalMaxArrowColor;
-    XColor *activeMinArrowColor;
-    XColor *activeMaxArrowColor;
+    Blt_Pixel normalMinArrowColor;
+    Blt_Pixel normalMaxArrowColor;
+    Blt_Pixel activeMinArrowColor;
+    Blt_Pixel activeMaxArrowColor;
 
     XColor *tickLabelColor;
     XColor *tickColor;
@@ -444,6 +446,8 @@ typedef struct _Scale {
     XColor *valueColor;
     XColor *titleColor;
     XColor *markColor;
+
+    int markWidth;
 
     Blt_Font titleFont;
     Blt_Font valueFont;
@@ -503,16 +507,15 @@ static double logTable[] = {
 #define DEF_ACTIVE_BG           STD_ACTIVE_BACKGROUND
 #define DEF_ACTIVE_FG           STD_ACTIVE_FOREGROUND
 #define DEF_ACTIVE_GRIP_BG      STD_ACTIVE_BACKGROUND
-#define DEF_ACTIVE_GRIP_BG      STD_ACTIVE_BACKGROUND
 #define DEF_ACTIVE_GRIP_FG      STD_ACTIVE_FOREGROUND
 #define DEF_ACTIVE_MAXARROW_COLOR RGB_BLUE
 #define DEF_ACTIVE_MINARROW_COLOR RGB_RED3
 #define DEF_ACTIVE_RELIEF       "raised"
-#define DEF_AXISLINE_COLOR      RGB_BLACK
+#define DEF_AXISLINE_COLOR      RGB_GREY20
 #define DEF_AXISLINE_WIDTH      "1"
 #define DEF_BORDERWIDTH         "0"
 #define DEF_CHECKLIMITS         "0"
-#define DEF_COLORBAR_THICKNESS  "0"
+#define DEF_COLORBAR_THICKNESS  "0.15i"
 #define DEF_COMMAND             (char *)NULL
 #define DEF_DECREASING          "0"
 #define DEF_DISABLED_BG         STD_DISABLED_BACKGROUND
@@ -524,6 +527,7 @@ static double logTable[] = {
 #define DEF_HEIGHT              "0"
 #define DEF_LOOSE               "0"
 #define DEF_MARK_COLOR          RGB_BLACK
+#define DEF_MARK_THICKNESS      "1"
 #define DEF_MAX                 "10.0"
 #define DEF_MIN                 "1.0"
 #define DEF_NORMAL_BG          STD_NORMAL_BACKGROUND
@@ -615,10 +619,10 @@ static Blt_ConfigSpec configSpecs[] =
     {BLT_CONFIG_BACKGROUND, "-activegripbackground", "activeGripBackground",
         "ActiveGripBackground", DEF_ACTIVE_GRIP_BG, 
         Blt_Offset(Scale, activeGripBg), 0},
-    {BLT_CONFIG_COLOR, "-activemaxarrowcolor", "activeMaxArrowColor", 
+    {BLT_CONFIG_PIX32, "-activemaxarrowcolor", "activeMaxArrowColor", 
         "ActiveMaxArrowColor", DEF_ACTIVE_MAXARROW_COLOR,  
         Blt_Offset(Scale, activeMaxArrowColor), 0}, 
-    {BLT_CONFIG_COLOR, "-activeminarrowcolor", "activeMinArrowColor", 
+    {BLT_CONFIG_PIX32, "-activeminarrowcolor", "activeMinArrowColor", 
         "ActiveMinArrowColor", DEF_ACTIVE_MINARROW_COLOR,  
         Blt_Offset(Scale, activeMinArrowColor), 0}, 
     {BLT_CONFIG_RELIEF, "-activerelief", "activeRelief", "Relief",
@@ -639,7 +643,7 @@ static Blt_ConfigSpec configSpecs[] =
         BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_PIXELS_NNEG, "-colorbarthickness", "colorBarThickness", 
         "ColorBarThickness", DEF_COLORBAR_THICKNESS, 
-        Blt_Offset(Scale, colorbar.thickness), BLT_CONFIG_DONT_SET_DEFAULT},
+        Blt_Offset(Scale, colorbar.thickness), 0},
     {BLT_CONFIG_OBJ, "-formatcommand", "formatCommand", "FormatCommand", 
         DEF_FORMAT_COMMAND, Blt_Offset(Scale, fmtCmdObjPtr), 
         BLT_CONFIG_NULL_OK},
@@ -676,9 +680,9 @@ static Blt_ConfigSpec configSpecs[] =
     {BLT_CONFIG_CUSTOM, "-majorticks", "majorTicks", "MajorTicks",
         (char *)NULL, Blt_Offset(Scale, major), BLT_CONFIG_NULL_OK,
         &majorTicksOption},
-    {BLT_CONFIG_COLOR, "-maxarrowcolor", "maxArrowColor", "MaxArrowColor", 
+    {BLT_CONFIG_PIX32, "-maxarrowcolor", "maxArrowColor", "MaxArrowColor", 
         DEF_NORMAL_MAXARROW_COLOR,  Blt_Offset(Scale, normalMaxArrowColor), 0}, 
-    {BLT_CONFIG_COLOR, "-minarrowcolor", "minArrowColor", "MinArrowColor", 
+    {BLT_CONFIG_PIX32, "-minarrowcolor", "minArrowColor", "MinArrowColor", 
         DEF_NORMAL_MINARROW_COLOR,Blt_Offset(Scale, normalMinArrowColor), 0}, 
     {BLT_CONFIG_DOUBLE, "-max", "max", "Max", DEF_MAX,
         Blt_Offset(Scale, outerRight), BLT_CONFIG_DONT_SET_DEFAULT},
@@ -694,6 +698,9 @@ static Blt_ConfigSpec configSpecs[] =
         Blt_Offset(Scale, reqInnerLeft), 0, &limitOption},
     {BLT_CONFIG_COLOR, "-markcolor", "markColor", "MarkColor", 
         DEF_MARK_COLOR,  Blt_Offset(Scale, markColor), 0}, 
+    {BLT_CONFIG_PIXELS_NNEG, "-markthickness", "markThickness", "MarkThickness",
+        DEF_MARK_THICKNESS, Blt_Offset(Scale, markWidth), 
+        BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_CUSTOM, "-minorticks", "minorTicks", "MinorTicks",
         (char *)NULL, Blt_Offset(Scale, minor), 
         BLT_CONFIG_NULL_OK, &minorTicksOption},
@@ -770,6 +777,8 @@ static Blt_SwitchSpec identifySwitches[] =
 /* Forward declarations */
 static Tcl_IdleProc DisplayProc;
 static Tcl_FreeProc FreeScale;
+static Blt_BindPickProc PickPartProc;
+static Blt_BindAppendTagsProc AppendTagsProc;
 
 static void
 SetAxisRange(AxisRange *rangePtr, double min, double max)
@@ -3400,7 +3409,7 @@ ComputeVerticalGeometry(Scale *scalePtr)
 
     x = scalePtr->inset + PADX;
     if (scalePtr->flags & SHOW_TITLE) {
-        x += scalePtr->titleHeight + PADX;
+        y1 += scalePtr->titleHeight + PADX;
     }
     if (scalePtr->flags & SHOW_COLORBAR) {
         scalePtr->colorbar.width = (scalePtr->flags & EXTERIOR) ?
@@ -3626,9 +3635,7 @@ static void
 DestroyScale(Scale *scalePtr)
 {
     Blt_FreeOptions(configSpecs, (char *)scalePtr, scalePtr->display, 0);
-    if (scalePtr->bindTable != NULL) {
-        Blt_DeleteBindings(scalePtr->bindTable, scalePtr);
-    }
+    Blt_DestroyBindingTable(scalePtr->bindTable);
     if (scalePtr->tickGC != NULL) {
         Tk_FreeGC(scalePtr->display, scalePtr->tickGC);
     }
@@ -3650,6 +3657,184 @@ FreeScale(DestroyData data)
     DestroyScale(scalePtr);
 }
 
+
+static ScalePart
+IdentifyHorizontalPart(Scale *scalePtr, int sx, int sy)
+{
+    if ((sx >= scalePtr->titleX) && (sy >= scalePtr->titleY) &&
+        (sx < (scalePtr->titleX + scalePtr->titleWidth)) &&
+        (sy < (scalePtr->titleY + scalePtr->titleHeight))) {
+        return PICK_TITLE;
+    }
+    /* Grip */
+    if (scalePtr->flags & SHOW_GRIP) {
+        int x, y;
+
+        x = HMap(scalePtr, scalePtr->mark);
+        y = ((scalePtr->y2 + scalePtr->y1) / 2) - (scalePtr->gripHeight / 2);
+        if ((sx >= (x - scalePtr->gripWidth / 2)) && 
+            (sy >= y) && 
+            (sx < (x + scalePtr->gripWidth / 2)) && 
+            (sy < (y + scalePtr->gripHeight))) {
+            return PICK_GRIP;
+        }
+    }
+    /* Axis line. */
+    if ((sx >= scalePtr->x1) && (sy >= scalePtr->y1) &&
+        (sx < scalePtr->x2) && (sy < scalePtr->y2)) {
+        return PICK_AXIS;
+    }
+    /* Max arrow. */
+    if (scalePtr->flags & SHOW_MAXARROW) {
+        int x;
+
+        x = HMap(scalePtr, scalePtr->innerRight);
+        if ((sx >= (x - scalePtr->arrowWidth / 2)) && 
+            (sy >= (scalePtr->y1 - scalePtr->arrowHeight)) &&
+            (sx < (x + scalePtr->arrowWidth / 2)) &&
+            (sy < scalePtr->y1)) {
+            return PICK_MAXARROW;
+        }
+    }
+    /* Min arrow. */
+    if (scalePtr->flags & SHOW_MINARROW) {
+        int x;
+
+        x = HMap(scalePtr, scalePtr->innerLeft);
+        if ((sx >= (x - scalePtr->arrowWidth / 2)) && 
+            (sy > scalePtr->y2) &&
+            (sx < (x + scalePtr->arrowWidth / 2)) &&
+            (sy < (scalePtr->y2 + scalePtr->arrowHeight))) {
+            return PICK_MINARROW;
+        }
+    }
+    /* Current value line. */
+    if (scalePtr->flags & SHOW_MARK) {
+        int x;
+
+        x = HMap(scalePtr, scalePtr->mark);
+        if ((sx >= (x - scalePtr->markWidth / 2)) && 
+            (sy > (scalePtr->inset + PADY)) &&
+            (sx <= (x + scalePtr->markWidth / 2)) &&
+            (sy < (Tk_Height(scalePtr->tkwin) - scalePtr->inset - PADY))) {
+            return PICK_MARK;
+        }
+    }
+    /* Colorbar. */
+    if (scalePtr->flags & SHOW_COLORBAR) {
+        if ((sx >= scalePtr->colorbar.x) && 
+            (sy >= scalePtr->colorbar.y) &&
+            (sx < (scalePtr->colorbar.x + scalePtr->colorbar.width)) &&
+            (sy < (scalePtr->colorbar.y + scalePtr->colorbar.height))) {
+            return PICK_COLORBAR;
+        }
+    }
+    return PICK_NONE;
+}
+
+static ScalePart
+IdentifyVerticalPart(Scale *scalePtr, int sx, int sy)
+{
+    if ((sx >= scalePtr->titleX) && (sy >= scalePtr->titleY) &&
+        (sx < (scalePtr->titleX + scalePtr->titleWidth)) &&
+        (sy < (scalePtr->titleY + scalePtr->titleHeight))) {
+        return PICK_TITLE;
+    }
+    /* Grip */
+    if (scalePtr->flags & SHOW_GRIP) {
+        int x, y;
+
+        y = VMap(scalePtr, scalePtr->mark);
+        x = ((scalePtr->x2 + scalePtr->x1) / 2) - (scalePtr->gripHeight / 2);
+        if ((sy >= (y - scalePtr->gripWidth / 2)) && 
+            (sx >= x) && 
+            (sy < (y + scalePtr->gripWidth / 2)) && 
+            (sx < (x + scalePtr->gripHeight))) {
+            return PICK_GRIP;
+        }
+    }
+    /* Axis line. */
+    if ((sx >= scalePtr->x1) && (sy >= scalePtr->y1) &&
+        (sx < scalePtr->x2) && (sy < scalePtr->y2)) {
+        return PICK_AXIS;
+    }
+    /* Max arrow. */
+    if (scalePtr->flags & SHOW_MAXARROW) {
+        int y;
+
+        y = VMap(scalePtr, scalePtr->innerRight);
+        if ((sy >= (y - scalePtr->arrowWidth / 2)) && 
+            (sx >= (scalePtr->x1 - scalePtr->arrowHeight)) &&
+            (sy < (y + scalePtr->arrowWidth / 2)) &&
+            (sx < scalePtr->x1)) {
+            return PICK_MAXARROW;
+        }
+    }
+    /* Min arrow. */
+    if (scalePtr->flags & SHOW_MINARROW) {
+        int y;
+
+        y = VMap(scalePtr, scalePtr->innerLeft);
+        if ((sy >= (y - scalePtr->arrowWidth / 2)) && 
+            (sx > scalePtr->x2) &&
+            (sy < (y + scalePtr->arrowWidth / 2)) &&
+            (sx < (scalePtr->x2 + scalePtr->arrowHeight))) {
+            return PICK_MINARROW;
+        }
+    }
+    /* Current value line. */
+    if (scalePtr->flags & SHOW_MARK) {
+        int y;
+
+        y = VMap(scalePtr, scalePtr->mark);
+        if ((sy >= (y - scalePtr->markWidth / 2)) && 
+            (sx > (scalePtr->inset + PADX)) &&
+            (sy <= (y + scalePtr->markWidth / 2)) &&
+            (sx < (Tk_Width(scalePtr->tkwin) - scalePtr->inset - PADX))) {
+            return PICK_MARK;
+        }
+    }
+    /* Colorbar. */
+    if (scalePtr->flags & SHOW_COLORBAR) {
+        if ((sx >= scalePtr->colorbar.x) && 
+            (sy >= scalePtr->colorbar.y) &&
+            (sx < (scalePtr->colorbar.x + scalePtr->colorbar.width)) &&
+            (sy < (scalePtr->colorbar.y + scalePtr->colorbar.height))) {
+            return PICK_COLORBAR;
+        }
+    }
+    return PICK_NONE;
+}
+
+/*ARGSUSED*/
+static void
+AppendTagsProc(Blt_BindTable table, ClientData object, ClientData context, 
+               Blt_Chain tags)
+{
+    Blt_Chain_Append(tags, object);
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * PickPartProc --
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static ClientData
+PickPartProc(ClientData clientData, int sx, int sy, ClientData *contextPtr)
+{
+    Scale *scalePtr = clientData;
+    ScalePart id;
+
+    if (HORIZONTAL(scalePtr)) {
+        id = IdentifyHorizontalPart(scalePtr, sx, sy);
+    } else {
+        id = IdentifyVerticalPart(scalePtr, sx, sy);
+    }
+    return (ClientData)(intptr_t)id;
+}
 
 /*
  *---------------------------------------------------------------------------
@@ -3677,9 +3862,8 @@ NewScale(Tcl_Interp *interp, Tk_Window tkwin)
     }
     Tk_SetClass(tkwin, "BltScale");
     scalePtr->display = Tk_Display(tkwin);
+    scalePtr->reqInnerLeft = scalePtr->reqInnerRight = Blt_NaN();
     scalePtr->interp = interp;
-    fprintf(stderr, "Setting scale tkwin to %p (%s)\n",
-            tkwin, Tk_PathName(tkwin));
     scalePtr->tkwin = tkwin;
     scalePtr->relief = TK_RELIEF_FLAT;
     scalePtr->activeRelief = TK_RELIEF_RAISED;
@@ -3695,10 +3879,11 @@ NewScale(Tcl_Interp *interp, Tk_Window tkwin)
     scalePtr->flags = (SHOW_ALL | AUTO_MAJOR| AUTO_MINOR | EXTERIOR);
     scalePtr->tickLabels = Blt_Chain_Create();
     scalePtr->tickLineWidth = 1;
-    scalePtr->arrowWidth = 20, scalePtr->arrowHeight = 20;
-    scalePtr->gripWidth = 10, scalePtr->gripHeight = 30;
     Blt_SetWindowInstanceData(tkwin, scalePtr);
     scalePtr->mark = 0.53;
+    scalePtr->markWidth = 1;
+    scalePtr->bindTable = Blt_CreateBindingTable(interp, tkwin, scalePtr, 
+        PickPartProc, AppendTagsProc);
     return scalePtr;
 }
 
@@ -3730,10 +3915,22 @@ ConfigureScale(
     int flags)
 {
     float angle;
+    Blt_FontMetrics fm;
 
     if (Blt_ConfigureWidgetFromObj(interp, scalePtr->tkwin, configSpecs, 
            objc, objv, (char *)scalePtr, flags) != TCL_OK) {
         return TCL_ERROR;
+    }
+
+    Blt_Font_GetMetrics(scalePtr->tickFont, &fm);
+    scalePtr->tickLength = fm.linespace * 60 / 100;
+    scalePtr->arrowHeight = fm.linespace;
+    scalePtr->arrowWidth = fm.linespace;
+    scalePtr->gripHeight = fm.linespace;
+    scalePtr->gripWidth = fm.linespace / 2;
+
+    if (scalePtr->painter == NULL) {
+        scalePtr->painter = Blt_GetPainter(scalePtr->tkwin, 1.0);
     }
     /* Check that the designate interval represents a valid range. Swap
      * values and if min is greater than max. */
@@ -3756,9 +3953,9 @@ ConfigureScale(
     }
     /* If no range min and max is set, use the data range values. */
     scalePtr->innerLeft = (DEFINED(scalePtr->reqInnerLeft))
-        ? scalePtr->outerLeft : scalePtr->reqInnerLeft;
+        ? scalePtr->reqInnerLeft : scalePtr->outerLeft;
     scalePtr->innerRight = (DEFINED(scalePtr->reqInnerRight))
-        ? scalePtr->outerRight : scalePtr->reqInnerRight;
+        ? scalePtr->reqInnerRight : scalePtr->outerRight;
 
     /* Subrange min and max must be within the scale's range. */
     if (scalePtr->innerLeft < scalePtr->outerLeft) {
@@ -4064,7 +4261,7 @@ MapVerticalTicks(Scale *scalePtr, int x)
     Tick left, right;
     int minorTickLength, majorTickLength;
 
-    scalePtr->tickAnchor = TK_ANCHOR_N;
+    scalePtr->tickAnchor = TK_ANCHOR_W;
     minorTickLength = (scalePtr->tickLength * 10) / 15;
     majorTickLength = scalePtr->tickLength;
     if ((scalePtr->flags & EXTERIOR) == 0) {
@@ -4140,7 +4337,7 @@ MapVerticalTicks(Scale *scalePtr, int x)
 static void
 MapHorizontalScale(Scale *scalePtr) 
 {
-    int y;
+    int y, ytop;
 
     y = scalePtr->inset + PADY;
     if (scalePtr->flags & SHOW_TITLE) {
@@ -4148,7 +4345,7 @@ MapHorizontalScale(Scale *scalePtr)
         switch (scalePtr->titleJustify) {
         case TK_JUSTIFY_LEFT:
             scalePtr->titleX = scalePtr->x1;
-            scalePtr->titleAnchor = TK_ANCHOR_W;
+            scalePtr->titleAnchor = TK_ANCHOR_NW;
             break;
         case TK_JUSTIFY_CENTER:
             scalePtr->titleX = (scalePtr->x1 + scalePtr->x2) / 2;
@@ -4156,37 +4353,42 @@ MapHorizontalScale(Scale *scalePtr)
             break;
         case TK_JUSTIFY_RIGHT:
             scalePtr->titleX = scalePtr->x2;
-            scalePtr->titleAnchor = TK_ANCHOR_E;
+            scalePtr->titleAnchor = TK_ANCHOR_NE;
             break;
         }
         y += scalePtr->titleHeight + PADY;
     }
+    ytop = y;
 
-    if (scalePtr->flags & SHOW_COLORBAR) {
-        scalePtr->colorbar.x = scalePtr->x1;
-        scalePtr->colorbar.y = y;
-        scalePtr->colorbar.width = scalePtr->x2 - scalePtr->x1 + 1;
-        y += scalePtr->colorbar.height;
+    /* Compute the location of the axis from the bottom of the widget. */
+    y = Tk_Height(scalePtr->tkwin) - scalePtr->inset - PADY;
+    if (scalePtr->flags & SHOW_TICKLABELS) {
+        y -= scalePtr->maxTickLabelHeight + PADY;
     }
-    scalePtr->y1 = y;
-    y += scalePtr->axisLineWidth;
+    if (scalePtr->flags & SHOW_TICKS) {
+        if (scalePtr->flags & EXTERIOR) {
+            y -= scalePtr->tickLength;
+        } 
+    }
     scalePtr->y2 = y;
-
+    y -= scalePtr->axisLineWidth;
+    scalePtr->y1 = y;
+    
     if (scalePtr->tickSegments != NULL) {
         Blt_Free(scalePtr->tickSegments);
         scalePtr->tickSegments = NULL;
     }
     if (scalePtr->flags & (SHOW_TICKS|SHOW_TICKLABELS)) {
-        MapHorizontalTicks(scalePtr, y);
+        MapHorizontalTicks(scalePtr, scalePtr->y2);
     }
-    if (scalePtr->flags & SHOW_TICKS) {
-        y += PADY;
-        if (scalePtr->flags & EXTERIOR) {
-            y += scalePtr->tickLength;
-        } 
-    }
-    if (scalePtr->flags & SHOW_TICKLABELS) {
-        y += scalePtr->maxTickLabelHeight + PADY;
+    if (scalePtr->flags & SHOW_COLORBAR) {
+        fprintf(stderr, "h=%d y=%d ytop=%d\n", Tk_Height(scalePtr->tkwin),
+                y, ytop);
+        scalePtr->colorbar.height = y - ytop;
+        y -= scalePtr->colorbar.height;
+        scalePtr->colorbar.x = scalePtr->x1;
+        scalePtr->colorbar.y = y;
+        scalePtr->colorbar.width = scalePtr->x2 - scalePtr->x1 + 1;
     }
     y += PADY + scalePtr->inset;
 }    
@@ -4202,15 +4404,17 @@ MapHorizontalScale(Scale *scalePtr)
 static void
 MapVerticalScale(Scale *scalePtr) 
 {
-    int x;
+    int x, y, xleft;
 
-    x = scalePtr->inset + PADY;
+    x = scalePtr->inset + PADX;
+    y = scalePtr->inset + PADY;
     if (scalePtr->flags & SHOW_TITLE) {
         scalePtr->titleY = scalePtr->inset + PADY;
+        y += scalePtr->inset + PADY;
         switch (scalePtr->titleJustify) {
         case TK_JUSTIFY_LEFT:
             scalePtr->titleX = scalePtr->inset + PADX;
-            scalePtr->titleAnchor = TK_ANCHOR_W;
+            scalePtr->titleAnchor = TK_ANCHOR_NW;
             break;
         case TK_JUSTIFY_CENTER:
             scalePtr->titleX = Tk_Width(scalePtr->tkwin) / 2;
@@ -4219,37 +4423,40 @@ MapVerticalScale(Scale *scalePtr)
         case TK_JUSTIFY_RIGHT:
             scalePtr->titleX = Tk_Width(scalePtr->tkwin) - scalePtr->inset -
                 PADX;
-            scalePtr->titleAnchor = TK_ANCHOR_E;
+            scalePtr->titleAnchor = TK_ANCHOR_NE;
             break;
         }
-        x += scalePtr->titleHeight + PADX;
+        y += scalePtr->titleHeight + PADX;
     }
+    xleft = x;
 
-    if (scalePtr->flags & SHOW_COLORBAR) {
-        scalePtr->colorbar.y = scalePtr->y1;
-        scalePtr->colorbar.x = x;
-        scalePtr->colorbar.height = scalePtr->y2 - scalePtr->y1 + 1;
-        x += scalePtr->colorbar.width;
+    /* Compute the location of the axis from the right side of the widget. */
+    x = Tk_Width(scalePtr->tkwin) - scalePtr->inset - PADX;
+    if (scalePtr->flags & SHOW_TICKLABELS) {
+        x -= scalePtr->maxTickLabelWidth + PADX;
     }
-    scalePtr->x1 = x;
-    x += scalePtr->axisLineWidth;
+    if (scalePtr->flags & SHOW_TICKS) {
+        if (scalePtr->flags & EXTERIOR) {
+            x -= scalePtr->tickLength;
+        } 
+    }
     scalePtr->x2 = x;
-
+    x -= scalePtr->axisLineWidth;
+    scalePtr->x1 = x;
+    
     if (scalePtr->tickSegments != NULL) {
         Blt_Free(scalePtr->tickSegments);
         scalePtr->tickSegments = NULL;
     }
     if (scalePtr->flags & (SHOW_TICKS|SHOW_TICKLABELS)) {
-        MapVerticalTicks(scalePtr, x);
+        MapVerticalTicks(scalePtr, scalePtr->x2);
     }
-    if (scalePtr->flags & SHOW_TICKS) {
-        x += PADX;
-        if (scalePtr->flags & EXTERIOR) {
-            x += scalePtr->tickLength;
-        } 
-    }
-    if (scalePtr->flags & SHOW_TICKLABELS) {
-        x += scalePtr->maxTickLabelWidth + PADX;
+    if (scalePtr->flags & SHOW_COLORBAR) {
+        scalePtr->colorbar.width = x - xleft;
+        x -= scalePtr->colorbar.width;
+        scalePtr->colorbar.y = scalePtr->y1;
+        scalePtr->colorbar.x = x;
+        scalePtr->colorbar.height = scalePtr->y2 - scalePtr->y1 + 1;
     }
     x += PADX + scalePtr->inset;
 }    
@@ -4262,8 +4469,14 @@ GradientCalcProc(ClientData clientData, int x, int y, double *valuePtr)
 
     if (HORIZONTAL(scalePtr)) {
         t = (double)x * scalePtr->screenScale;
+        if (scalePtr->flags & DECREASING) {
+            t = 1.0 - t;
+        }
     } else {
         t = (double)y * scalePtr->screenScale;
+        if ((scalePtr->flags & DECREASING) == 0) {
+            t = 1.0 - t;
+        }
     }
     *valuePtr = t;
     return TCL_OK;
@@ -4314,39 +4527,43 @@ ColorbarToPicture(Scale *scalePtr, int w, int h)
 static void
 DrawColorbar(Scale *scalePtr, Drawable drawable)
 {
-    Blt_Painter painter;
-    Blt_Picture picture;
-
     if (scalePtr->palette == NULL) {
         return;                         /* No palette defined. */
     }
-    picture = ColorbarToPicture(scalePtr, scalePtr->colorbar.width, 
-                                scalePtr->colorbar.height);
-    if (picture == NULL) {
-        return;                         /* Background is obscured. */
-    }
-    painter = Blt_GetPainter(scalePtr->tkwin, 1.0);
-    Blt_PaintPicture(painter, drawable, picture, 0, 0, 
-                     scalePtr->colorbar.width, scalePtr->colorbar.height, 
-                     scalePtr->colorbar.x, scalePtr->colorbar.y, 0);
-    Blt_FreePicture(picture);
-}
+    if ((scalePtr->colorbar.width > 0) && (scalePtr->colorbar.height > 0)) {
+        Blt_Picture picture;
 
+        picture = ColorbarToPicture(scalePtr, scalePtr->colorbar.width, 
+                                    scalePtr->colorbar.height);
+        if (picture == NULL) {
+            return;                         /* Background is obscured. */
+        }
+        Blt_PaintPicture(scalePtr->painter, drawable, picture, 0, 0, 
+                         scalePtr->colorbar.width, scalePtr->colorbar.height, 
+                         scalePtr->colorbar.x, scalePtr->colorbar.y, 0);
+        Blt_FreePicture(picture);
+    } else {
+        fprintf(stderr, "cbw=%d cbh=%d w=%d h=%d rw=%d rh=%d\n",
+                scalePtr->colorbar.width, scalePtr->colorbar.height,
+                Tk_Width(scalePtr->tkwin), Tk_Height(scalePtr->tkwin),
+                Tk_ReqWidth(scalePtr->tkwin), Tk_ReqHeight(scalePtr->tkwin));
+    }
+}
 
 static Blt_Picture
 GetMaxArrowPicture(Scale *scalePtr, int w, int h, int direction)
 {
     Blt_Picture *pictPtr;
-    XColor *colorPtr;
+    Blt_Pixel pixel;
 
     if (scalePtr->flags & ACTIVE_MAXARROW) {
-        colorPtr = scalePtr->activeMaxArrowColor;
+        pixel.u32 = scalePtr->activeMaxArrowColor.u32;
         pictPtr = &scalePtr->activeMaxArrow;
     } else if (scalePtr->flags & DISABLED) {
-        colorPtr = scalePtr->disabledFgColor;
+        pixel.u32 = Blt_XColorToPixel(scalePtr->disabledFgColor);
         pictPtr = &scalePtr->disabledMaxArrow;
     } else {
-        colorPtr = scalePtr->normalMaxArrowColor;
+        pixel.u32 = scalePtr->normalMaxArrowColor.u32;
         pictPtr = &scalePtr->normalMaxArrow;
     }
     if (((*pictPtr) == NULL) ||
@@ -4354,7 +4571,6 @@ GetMaxArrowPicture(Scale *scalePtr, int w, int h, int direction)
         (Blt_Picture_Height(*pictPtr) != h)) {
         Blt_Picture picture;
         int ix, iy, ih, iw;
-        Blt_Pixel pixel;
 
         if (*pictPtr != NULL) {
             Blt_FreePicture(*pictPtr);
@@ -4365,8 +4581,6 @@ GetMaxArrowPicture(Scale *scalePtr, int w, int h, int direction)
         Blt_BlankPicture(picture, 0x0);
         iy = (h - ih) / 2;
         ix = (w - iw) / 2;
-        pixel.u32 = Blt_XColorToPixel(colorPtr);
-        pixel.Alpha = 0x80;
         Blt_PaintArrowHead(picture, ix, iy, iw, ih, 
                            pixel.u32, direction);
         *pictPtr = picture;
@@ -4378,16 +4592,16 @@ static Blt_Picture
 GetMinArrowPicture(Scale *scalePtr, int w, int h, int direction)
 {
     Blt_Picture *pictPtr;
-    XColor *colorPtr;
+    Blt_Pixel pixel;
 
     if (scalePtr->flags & ACTIVE_MINARROW) {
-        colorPtr = scalePtr->activeMinArrowColor;
+        pixel.u32 = scalePtr->activeMinArrowColor.u32;
         pictPtr = &scalePtr->activeMinArrow;
     } else if (scalePtr->flags & DISABLED) {
-        colorPtr = scalePtr->disabledFgColor;
+        pixel.u32 = Blt_XColorToPixel(scalePtr->disabledFgColor);
         pictPtr = &scalePtr->disabledMinArrow;
     } else {
-        colorPtr = scalePtr->normalMinArrowColor;
+        pixel.u32 = scalePtr->normalMinArrowColor.u32;
         pictPtr = &scalePtr->normalMinArrow;
     }
     if (((*pictPtr) == NULL) ||
@@ -4395,7 +4609,6 @@ GetMinArrowPicture(Scale *scalePtr, int w, int h, int direction)
         (Blt_Picture_Height(*pictPtr) != h)) {
         Blt_Picture picture;
         int ix, iy, ih, iw;
-        Blt_Pixel pixel;
         
         if (*pictPtr != NULL) {
             Blt_FreePicture(*pictPtr);
@@ -4406,8 +4619,6 @@ GetMinArrowPicture(Scale *scalePtr, int w, int h, int direction)
         Blt_BlankPicture(picture, 0x0);
         iy = (h - ih) / 2;
         ix = (w - iw) / 2;
-        pixel.u32 = Blt_XColorToPixel(colorPtr);
-        pixel.Alpha = 0x80;
         Blt_PaintArrowHead(picture, ix, iy, iw, ih, 
                            pixel.u32, direction);
         *pictPtr = picture;
@@ -4466,7 +4677,7 @@ DrawScale(Scale *scalePtr, Drawable drawable)
         Blt_Ts_InitStyle(ts);
         Blt_Ts_SetFont(ts, scalePtr->titleFont);
         Blt_Ts_SetPadding(ts, 1, 2, 0, 0);
-        Blt_Ts_SetAnchor(ts, TK_ANCHOR_NW);
+        Blt_Ts_SetAnchor(ts, scalePtr->titleAnchor);
         Blt_Ts_SetForeground(ts, titleFg);
         Blt_Ts_SetMaxLength(ts, scalePtr->width - 2 * scalePtr->inset);
         Blt_Ts_DrawText(scalePtr->tkwin, drawable, scalePtr->title, -1, &ts, 
@@ -4530,9 +4741,6 @@ DrawScale(Scale *scalePtr, Drawable drawable)
     if (scalePtr->flags & SHOW_MAXARROW) {
         Blt_Picture picture;
 
-        if (scalePtr->painter == NULL) {
-            scalePtr->painter = Blt_GetPainter(scalePtr->tkwin, 1.0);
-        }
         if (HORIZONTAL(scalePtr)) {
             int x;
 
@@ -4560,9 +4768,6 @@ DrawScale(Scale *scalePtr, Drawable drawable)
     if (scalePtr->flags & SHOW_MINARROW) {
         Blt_Picture picture;
 
-        if (scalePtr->painter == NULL) {
-            scalePtr->painter = Blt_GetPainter(scalePtr->tkwin, 1.0);
-        }
         if (HORIZONTAL(scalePtr)) {
             int x;
 
@@ -4582,7 +4787,8 @@ DrawScale(Scale *scalePtr, Drawable drawable)
                                   scalePtr->arrowWidth, ARROW_LEFT);
             Blt_PaintPicture(scalePtr->painter, drawable, picture, 0, 0, 
                 scalePtr->arrowHeight, scalePtr->arrowWidth, 
-                scalePtr->x1 - scalePtr->arrowHeight, y - scalePtr->arrowWidth /2,
+                             scalePtr->x2, 
+                             y - scalePtr->arrowWidth /2,
                 0);
         }
     }
@@ -4602,9 +4808,23 @@ DrawScale(Scale *scalePtr, Drawable drawable)
             x = HMap(scalePtr, scalePtr->mark);
             /* Current value line. */
             if (scalePtr->flags & SHOW_MARK) {
-                XDrawLine(scalePtr->display, drawable, scalePtr->markGC, 
-                          x, scalePtr->inset,
-                          x, Tk_Height(scalePtr->tkwin) - scalePtr->inset);
+                Blt_Picture picture;
+                Blt_PaintBrush brush;
+                Blt_Pixel pixel;
+                int w, h;
+
+                pixel.u32 = Blt_XColorToPixel(scalePtr->markColor);
+                pixel.Alpha = 0x80;
+                brush = Blt_NewColorBrush(pixel.u32);
+                w = scalePtr->markWidth;
+                h = Tk_Height(scalePtr->tkwin) - 2 * scalePtr->inset;
+                picture = Blt_CreatePicture(w, h);
+                Blt_SetBrushArea(brush, 0, 0, w, h);
+                Blt_PaintRectangle(picture, 0, 0, w, h, 0, 0, brush, 0);
+                Blt_PaintPicture(scalePtr->painter, drawable, picture, 0, 0, 
+                                 w, h, x - w / 2, scalePtr->inset, TRUE);
+                Blt_FreePicture(picture);
+                Blt_FreeBrush(brush);
             }
             if (scalePtr->flags & SHOW_GRIP) {
                 Blt_Bg_FillRectangle(scalePtr->tkwin, drawable, bg, 
@@ -4619,9 +4839,23 @@ DrawScale(Scale *scalePtr, Drawable drawable)
             y = VMap(scalePtr, scalePtr->mark);
             /* Current value line. */
             if (scalePtr->flags & SHOW_MARK) {
-                XDrawLine(scalePtr->display, drawable, scalePtr->markGC, 
-                          scalePtr->inset, y,
-                          Tk_Width(scalePtr->tkwin) - scalePtr->inset, y);
+                Blt_Picture picture;
+                Blt_PaintBrush brush;
+                Blt_Pixel pixel;
+                int w, h;
+
+                pixel.u32 = Blt_XColorToPixel(scalePtr->markColor);
+                pixel.Alpha = 0x80;
+                brush = Blt_NewColorBrush(pixel.u32);
+                h = scalePtr->markWidth;
+                w = Tk_Width(scalePtr->tkwin) - 2 * scalePtr->inset;
+                picture = Blt_CreatePicture(w, h);
+                Blt_SetBrushArea(brush, 0, 0, w, h);
+                Blt_PaintRectangle(picture, 0, 0, w, h, 0, 0, brush, 0);
+                Blt_PaintPicture(scalePtr->painter, drawable, picture, 0, 0, 
+                                 w, h, scalePtr->inset, y - h / 2, TRUE);
+                Blt_FreePicture(picture);
+                Blt_FreeBrush(brush);
             }
             if (scalePtr->flags & SHOW_GRIP) {
                 Blt_Bg_FillRectangle(scalePtr->tkwin, drawable, bg, 
@@ -4647,39 +4881,6 @@ DrawScale(Scale *scalePtr, Drawable drawable)
                 scalePtr->titleX, scalePtr->titleY);
     }
 }
-
-
-#ifdef notdef
-ClientData
-Blt_MakeAxisTag(Scale *scalePtr, const char *tagName)
-{
-    Blt_HashEntry *hPtr;
-    int isNew;
-
-    hPtr = Blt_CreateHashEntry(&scalePtr->bindTagTable, tagName, &isNew);
-    return Blt_GetHashKey(&scalePtr->bindTagTable, hPtr);
-}
-
-
-/*-------------------------------------------------------------------------------
- *
- * AxisBindOp --
- *
- *    .g axis bind axisName sequence command
- *
- *---------------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static int
-AxisBindOp(ClientData clientData, Tcl_Interp *interp, int objc, 
-           Tcl_Obj *const *objv)
-{
-    Scale *scalePtr = clientData;
-
-    return Blt_ConfigureBindingsFromObj(interp, scalePtr->bindTable, 
-        Blt_MakeAxisTag(scalePtr, Tcl_GetString(objv[3])), objc - 4, objv + 4);
-}
-#endif
 
 /*
  *---------------------------------------------------------------------------
@@ -4786,13 +4987,33 @@ ActivateOp(ClientData clientData, Tcl_Interp *interp, int objc,
            Tcl_Obj *const *objv)
 {
     Scale *scalePtr = clientData;
+    char c;
     const char *string;
+    int activate;
+    int flag;
+    int length;
 
-    string = Tcl_GetString(objv[2]);
-    if (string[0] == 'a') {
-        scalePtr->flags |= ACTIVE;
+    string = Tcl_GetString(objv[1]);
+    activate = (string[0] == 'a');
+
+    string = Tcl_GetStringFromObj(objv[2], &length);
+    c = string[0];
+    if ((c == 'm') && (strncmp(string, "minarrow", length) == 0)) {
+        flag = ACTIVE_MINARROW;
+    } else if ((c == 'm') && (strncmp(string, "maxarrow", length) == 0)) {
+        flag = ACTIVE_MAXARROW;
+    } else if ((c == 'g') && (strncmp(string, "grip", length) == 0)) {
+        flag = ACTIVE_GRIP;
     } else {
-        scalePtr->flags &= ~ACTIVE;
+        Tcl_AppendResult(interp, "unknown scale part \"", string, 
+                         "\": should be axis, colorbar, grip, mark, maxarrow, "
+                         "minarrow, or title.", (char *)NULL);
+        return TCL_ERROR;
+    }
+    if (activate) {
+        scalePtr->flags |= flag;
+    } else {
+        scalePtr->flags &= ~flag;
     }
     EventuallyRedraw(scalePtr);
     return TCL_OK;
@@ -4811,13 +5032,36 @@ static int
 BindOp(ClientData clientData, Tcl_Interp *interp, int objc,
        Tcl_Obj *const *objv)
 {
-#ifdef notdef
     Scale *scalePtr = clientData;
+    const char *string;
+    char c;
+    int length;
+    ScalePart id;
 
+    string = Tcl_GetStringFromObj(objv[2], &length);
+    c = string[0];
+    if ((c == 'a') && (strncmp(string, "axis", length) == 0)) {
+        id = PICK_AXIS;
+    } else if ((c == 'm') && (strncmp(string, "minarrow", length) == 0)) {
+        id = PICK_MINARROW;
+    } else if ((c == 'm') && (strncmp(string, "maxarrow", length) == 0)) {
+        id = PICK_MAXARROW;
+    } else if ((c == 'g') && (strncmp(string, "grip", length) == 0)) {
+        id = PICK_GRIP;
+    } else if ((c == 't') && (strncmp(string, "title", length) == 0)) {
+        id = PICK_MAXARROW;
+    } else if ((c == 'c') && (strncmp(string, "colorbar", length) == 0)) {
+        id = PICK_COLORBAR;
+    } else if ((c == 'm') && (strncmp(string, "mark", length) == 0)) {
+        id = PICK_MARK;
+    } else {
+        Tcl_AppendResult(interp, "unknown scale part \"", string, 
+                         "\": should be axis, colorbar, grip, mark, maxarrow, "
+                         "minarrow, or title.", (char *)NULL);
+        return TCL_ERROR;
+    }
     return Blt_ConfigureBindingsFromObj(interp, scalePtr->bindTable,
-              Blt_MakeScaleTag(scalePtr, what), objc, objv);
-#endif
-    return TCL_OK;
+             (ClientData)(intptr_t)id, objc - 3, objv + 3);
 }
           
 /*
@@ -4937,7 +5181,7 @@ LimitsOp(ClientData clientData, Tcl_Interp *interp, int objc,
  *      the axis value. If an error occurred, TCL_ERROR is returned
  *      and interp->result will contain an error message.
  *
- *      pathName invtransform value 
+ *      pathName invtransform x y 
  *
  *---------------------------------------------------------------------------
  */
@@ -4947,18 +5191,19 @@ InvTransformOp(ClientData clientData, Tcl_Interp *interp, int objc,
                Tcl_Obj *const *objv)
 {
     Scale *scalePtr = clientData;
-    double y;                           /* Resulting axis coordinate */
-    int sy;                             /* Integer window coordinate*/
+    double r;                           /* Resulting axis coordinate */
+    int sx, sy;                         /* Integer window coordinates */
 
-    if (Tcl_GetIntFromObj(interp, objv[0], &sy) != TCL_OK) {
+    if ((Tcl_GetIntFromObj(interp, objv[2], &sx) != TCL_OK) ||
+        (Tcl_GetIntFromObj(interp, objv[3], &sy) != TCL_OK)) {
         return TCL_ERROR;
     }
     if (HORIZONTAL(scalePtr)) {
-        y = InvHMap(scalePtr, (double)sy);
+        r = InvHMap(scalePtr, (double)sx);
     } else {
-        y = InvVMap(scalePtr, (double)sy);
+        r = InvVMap(scalePtr, (double)sy);
     }
-    Tcl_SetDoubleObj(Tcl_GetObjResult(interp), y);
+    Tcl_SetDoubleObj(Tcl_GetObjResult(interp), r);
     return TCL_OK;
 }
 
@@ -4998,17 +5243,6 @@ TransformOp(ClientData clientData, Tcl_Interp *interp, int objc,
     return TCL_OK;
 }
 
-static ScalePart
-IdentifyPart(Scale *scalePtr, int sx, int sy)
-{
-    if ((sx >= scalePtr->titleX) && (sy >= scalePtr->titleY) &&
-        (sx < (scalePtr->titleX + scalePtr->titleWidth)) &&
-        (sy < (scalePtr->titleY + scalePtr->titleHeight))) {
-        return PICK_TITLE;
-    }
-    return PICK_NONE;
-}
-
 /*
  *---------------------------------------------------------------------------
  *
@@ -5031,6 +5265,7 @@ IdentifyOp(ClientData clientData, Tcl_Interp *interp, int objc,
     Scale *scalePtr = clientData;
     ScalePart id;
     int sx, sy;
+    const char *string;
 
     if ((Tk_GetPixelsFromObj(interp, scalePtr->tkwin, objv[2], &sx) != TCL_OK)||
         (Tk_GetPixelsFromObj(interp, scalePtr->tkwin, objv[3], &sy) != TCL_OK)){
@@ -5048,7 +5283,31 @@ IdentifyOp(ClientData clientData, Tcl_Interp *interp, int objc,
         sx -= rootX;
         sy -= rootY;
     }        
-    id = IdentifyPart(scalePtr, sx, sy);
+    if (HORIZONTAL(scalePtr)) {
+        id = IdentifyHorizontalPart(scalePtr, sx, sy);
+    } else {
+        id = IdentifyVerticalPart(scalePtr, sx, sy);
+    }
+    switch (id) {
+    case PICK_AXIS:
+        string = "axis";         break;
+    case PICK_GRIP:
+        string = "grip";         break;
+    case PICK_MINARROW:
+        string = "minarrow";     break;
+    case PICK_MAXARROW:
+        string = "maxarrow";     break;
+    case PICK_TITLE:
+        string = "title";        break;
+    case PICK_COLORBAR:
+        string = "colorbar";     break;
+    case PICK_MARK:
+        string = "mark";         break;
+    default:
+    case PICK_NONE:
+        string = "";             break;
+    }
+    Tcl_SetStringObj(Tcl_GetObjResult(interp), string, -1);
     return TCL_OK;
 }
 
@@ -5113,17 +5372,17 @@ SetOp(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 }
 
 static Blt_OpSpec scaleOps[] = {
-    {"activate",     1, ActivateOp,     2, 2, ""},
+    {"activate",     1, ActivateOp,     3, 3, "part"},
     {"bind",         1, BindOp,         2, 5, "sequence command"},
     {"cget",         2, CgetOp,         3, 3, "option"},
     {"configure",    2, ConfigureOp,    2, 0, "?option value?..."},
-    {"deactivate",   1, ActivateOp,     2, 2, ""},
+    {"deactivate",   1, ActivateOp,     3, 3, "part"},
     {"get",          1, GetOp,          3, 3, "what"},
     {"identify",     2, IdentifyOp,     4, 4, "x y"},
-    {"invtransform", 2, InvTransformOp, 3, 3, "value"},
+    {"invtransform", 2, InvTransformOp, 4, 4, "x y"},
     {"limits",       1, LimitsOp,       2, 2, ""},
     {"set",          1, SetOp,          3, 3, "value"},
-    {"transform",    1, TransformOp,    4, 4, "x y"},
+    {"transform",    1, TransformOp,    3, 3, "value"},
 };
 
 static int numScaleOps = sizeof(scaleOps) / sizeof(Blt_OpSpec);
