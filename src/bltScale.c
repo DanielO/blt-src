@@ -483,8 +483,6 @@ typedef struct _Scale {
     int gripRelief;
 
     double screenScale;
-    int screenOffset;
-    int screenMin, screenRange;
     Blt_Palette palette;
 
     Colorbar colorbar;
@@ -1404,8 +1402,8 @@ ObjToShowFlags(ClientData clientData, Tcl_Interp *interp, Tk_Window tkwin,
                    (strncmp(string, "ticklabels", length) == 0)) {
             flag = SHOW_TICKLABELS;
         } else {
-            Tcl_AppendResult(interp, "bad scale value \"", string, "\": should be"
-                             " log, linear, or time", (char *)NULL);
+            Tcl_AppendResult(interp, "bad scale value \"", string, 
+                "\": should be log, linear, or time", (char *)NULL);
             return TCL_ERROR;
         }
         if (showFlag) {
@@ -1726,7 +1724,7 @@ InvHMap(Scale *scalePtr, double x)
 {
     double value;
 
-    x = (double)(x - scalePtr->screenMin) * scalePtr->screenScale;
+    x = (double)(x - scalePtr->x1) * scalePtr->screenScale;
     if (scalePtr->flags & DECREASING) {
         x = 1.0 - x;
     }
@@ -1760,7 +1758,7 @@ InvVMap(Scale *scalePtr, double y)      /* Screen coordinate */
 {
     double value;
 
-    y = (double)(y - scalePtr->screenMin) * scalePtr->screenScale;
+    y = (double)(y - scalePtr->y1) * scalePtr->screenScale;
     if (scalePtr->flags & DECREASING) {
         y = 1.0 - y;
     }
@@ -1797,7 +1795,7 @@ ConvertToScreenX(Scale *scalePtr, double x)
     if (scalePtr->flags & DECREASING) {
         x = 1.0 - x;
     }
-    return (x * scalePtr->screenRange + scalePtr->screenMin);
+    return ((x * (scalePtr->x2 - scalePtr->x1)) + scalePtr->x1);
 }
 
 /*
@@ -1822,7 +1820,7 @@ ConvertToScreenY(Scale *scalePtr, double y)
     if (scalePtr->flags & DECREASING) {
         y = 1.0 - y;
     }
-    return ((1.0 - y) * scalePtr->screenRange + scalePtr->screenMin);
+    return (((1.0 - y) * (scalePtr->y2 - scalePtr->y1)) + scalePtr->y1);
 }
 
 /*
@@ -3331,6 +3329,7 @@ ComputeHorizontalGeometry(Scale *scalePtr)
     scalePtr->x2 = x2;
     scalePtr->y1 = y;
     scalePtr->y2 = y + scalePtr->axisLineWidth;
+    scalePtr->screenScale = 1.0 / (x2 - x1);
 
     y += scalePtr->axisLineWidth;
     if (scalePtr->flags & SHOW_TICKS) {
@@ -3343,8 +3342,6 @@ ComputeHorizontalGeometry(Scale *scalePtr)
         y += scalePtr->maxTickLabelHeight + PADY;
     }
     y += PADY + scalePtr->inset;
-    scalePtr->screenOffset = x1;
-    scalePtr->screenRange = x2 - x1;
     scalePtr->height = y;
     scalePtr->width = Tk_Width(scalePtr->tkwin);
 }    
@@ -3393,6 +3390,7 @@ ComputeVerticalGeometry(Scale *scalePtr)
     scalePtr->x2 = x + scalePtr->axisLineWidth;
     scalePtr->y1 = y1;
     scalePtr->y2 = y2;
+    scalePtr->screenScale = 1.0 / (y2 - y1);
 
     x += scalePtr->axisLineWidth;
     if (scalePtr->flags & SHOW_TICKS) {
@@ -3405,8 +3403,6 @@ ComputeVerticalGeometry(Scale *scalePtr)
         x += scalePtr->maxTickLabelHeight + PADX;
     }
     x += PADX + scalePtr->inset;
-    scalePtr->screenOffset = y1;
-    scalePtr->screenRange = y2 - y1;
     scalePtr->width = x;
     scalePtr->height = Tk_Height(scalePtr->tkwin);
 }    
@@ -3500,7 +3496,7 @@ ComputeGeometry(Scale *scalePtr)
 /*
  *---------------------------------------------------------------------------
  *
- * ResetTextStyles --
+ * ResetGCs --
  *
  *      Configures axis attributes (font, line width, label, etc) and
  *      allocates a new (possibly shared) graphics context.  Line cap style
@@ -3517,7 +3513,7 @@ ComputeGeometry(Scale *scalePtr)
  *---------------------------------------------------------------------------
  */
 static void
-ResetTextStyles(Scale *scalePtr)
+ResetGCs(Scale *scalePtr)
 {
     GC newGC;
     XGCValues gcValues;
@@ -3775,7 +3771,7 @@ ConfigureScale(
                 scalePtr);
     }
     scalePtr->tickAngle = angle;
-    ResetTextStyles(scalePtr);
+    ResetGCs(scalePtr);
 
     scalePtr->titleWidth = scalePtr->titleHeight = 0;
     if (scalePtr->title != NULL) {
@@ -3863,7 +3859,7 @@ ConfigureScale(
                 scalePtr);
     }
     scalePtr->tickAngle = angle;
-    ResetTextStyles(scalePtr);
+    ResetGCs(scalePtr);
 
     scalePtr->titleWidth = scalePtr->titleHeight = 0;
     if (scalePtr->title != NULL) {
