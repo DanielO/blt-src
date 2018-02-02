@@ -1069,8 +1069,7 @@ ObjToOrient(ClientData clientData, Tcl_Interp *interp, Tk_Window parent,
     int orient;
     int length;
 
-    string = Tcl_GetString(objPtr);
-    length = strlen(string);
+    string = Tcl_GetStringFromObj(objPtr, &length);
     if (strncmp(string, "vertical", length) == 0) {
         orient = VERTICAL;
     } else if (strncmp(string, "horizontal", length) == 0) {

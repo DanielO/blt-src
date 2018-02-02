@@ -2088,7 +2088,7 @@ GetRemotePath(Remote *remotePtr, const char *string, int *lengthPtr)
         Tcl_DStringAppend(&remotePtr->ds, "/", 1);
         Tcl_DStringAppend(&remotePtr->ds, string, -1);
     }
-    *lengthPtr = strlen(Tcl_DStringValue(&remotePtr->ds));
+    *lengthPtr = Tcl_DStringLength(&remotePtr->ds);
     return Tcl_DStringValue(&remotePtr->ds);
 }
 
