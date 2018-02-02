@@ -224,7 +224,7 @@ typedef struct {
  *---------------------------------------------------------------------------
  */
 typedef struct {
-    Point2d anchorPos;
+    int x, y;
     unsigned int width, height;
     char string[1];
 } TickLabel;
@@ -1724,7 +1724,7 @@ MakeLabel(Scale *scalePtr, double value)
     }
     labelPtr = Blt_AssertMalloc(sizeof(TickLabel) + length);
     strcpy(labelPtr->string, string);
-    labelPtr->anchorPos.x = labelPtr->anchorPos.y = -1000;
+    labelPtr->x = labelPtr->y = -1000;
     Tcl_DStringFree(&ds);
     return labelPtr;
 }
@@ -3333,8 +3333,8 @@ ComputeHorizontalGeometry(Scale *scalePtr)
     leftPad = MAX(minLabelPtr->width / 2, scalePtr->arrowWidth / 2);
     rightPad = MAX(maxLabelPtr->width / 2, scalePtr->arrowWidth / 2);
 
-    x1 = scalePtr->inset + leftPad;    
-    x2 = Tk_Width(scalePtr->tkwin) - (scalePtr->inset + rightPad);
+    x1 = scalePtr->inset + leftPad + PADX;    
+    x2 = Tk_Width(scalePtr->tkwin) - (scalePtr->inset + rightPad + PADX);
 
     y = scalePtr->inset + PADY;
     if (scalePtr->flags & SHOW_TITLE) {
@@ -3545,7 +3545,6 @@ ResetGCs(Scale *scalePtr)
     /* Tick GC  */
     gcMask = (GCForeground | GCLineWidth | GCCapStyle);
     gcValues.foreground = scalePtr->tickColor->pixel;
-    gcValues.font = Blt_Font_Id(scalePtr->tickFont);
     gcValues.line_width = scalePtr->tickLineWidth;
     gcValues.cap_style = CapProjecting;
 
@@ -3686,7 +3685,7 @@ NewScale(Tcl_Interp *interp, Tk_Window tkwin)
     scalePtr->flags = (SHOW_ALL | AUTO_MAJOR| AUTO_MINOR | EXTERIOR);
     scalePtr->tickLabels = Blt_Chain_Create();
     scalePtr->tickLineWidth = 1;
-    scalePtr->arrowWidth = 20, scalePtr->arrowHeight = 30;
+    scalePtr->arrowWidth = 20, scalePtr->arrowHeight = 20;
     scalePtr->gripWidth = 10, scalePtr->gripHeight = 30;
     Blt_SetWindowInstanceData(tkwin, scalePtr);
     scalePtr->mark = 0.53;
@@ -3994,7 +3993,7 @@ MapHorizontalTicks(Scale *scalePtr, int y)
     segPtr = segments;
 
     link = Blt_Chain_FirstLink(scalePtr->tickLabels);
-    labelPos = y;
+    labelPos = y + scalePtr->tickLength + PADY;
     for (left = FirstMajorTick(scalePtr); left.isValid; left = right) {
         right = NextMajorTick(scalePtr);
         if (right.isValid) {
@@ -4022,7 +4021,7 @@ MapHorizontalTicks(Scale *scalePtr, int y)
             segPtr->x1 = segPtr->x2 = ConvertToScreenX(scalePtr, left.value);
             segPtr->y1 = y;
             segPtr->y2 = y + majorTickLength;
-
+            
             mid = left.value;
             if ((scalePtr->flags & LABELOFFSET) && (right.isValid)) {
                 mid = (right.value - left.value) * 0.5;
@@ -4033,9 +4032,10 @@ MapHorizontalTicks(Scale *scalePtr, int y)
                 labelPtr = Blt_Chain_GetValue(link);
                 link = Blt_Chain_NextLink(link);
                 
-                labelPtr->anchorPos.x = segPtr->x1;
-                labelPtr->anchorPos.y = labelPos;
+                labelPtr->x = segPtr->x1;
+                labelPtr->y = labelPos;
             }
+            segPtr++;
         }
     }
     scalePtr->tickSegments = segments;
@@ -4069,7 +4069,7 @@ MapVerticalTicks(Scale *scalePtr, int x)
     segPtr = segments;
 
     link = Blt_Chain_FirstLink(scalePtr->tickLabels);
-    labelPos = x;
+    labelPos = x + scalePtr->tickLength + PADX;
     for (left = FirstMajorTick(scalePtr); left.isValid; left = right) {
         right = NextMajorTick(scalePtr);
         if (right.isValid) {
@@ -4108,9 +4108,10 @@ MapVerticalTicks(Scale *scalePtr, int x)
                 labelPtr = Blt_Chain_GetValue(link);
                 link = Blt_Chain_NextLink(link);
                 
-                labelPtr->anchorPos.x = labelPos;
-                labelPtr->anchorPos.y = segPtr->y1;
+                labelPtr->x = labelPos;
+                labelPtr->y = segPtr->y1;
             }
+            segPtr++;
         }
     }
     scalePtr->tickSegments = segments;
@@ -4166,7 +4167,7 @@ MapHorizontalScale(Scale *scalePtr)
         scalePtr->tickSegments = NULL;
     }
     if (scalePtr->flags & (SHOW_TICKS|SHOW_TICKLABELS)) {
-        MapHorizontalTicks(scalePtr, y - scalePtr->axisLineWidth);
+        MapHorizontalTicks(scalePtr, y);
     }
     if (scalePtr->flags & SHOW_TICKS) {
         y += PADY;
@@ -4343,18 +4344,21 @@ GetMaxArrowPicture(Scale *scalePtr, int w, int h, int direction)
         (Blt_Picture_Height(*pictPtr) != h)) {
         Blt_Picture picture;
         int ix, iy, ih, iw;
+        Blt_Pixel pixel;
 
         if (*pictPtr != NULL) {
             Blt_FreePicture(*pictPtr);
         }
-        ih = h * 40 / 100;
-        iw = w * 80 / 100;
+        ih = h;
+        iw = w;
         picture = Blt_CreatePicture(w, h);
         Blt_BlankPicture(picture, 0x0);
         iy = (h - ih) / 2;
         ix = (w - iw) / 2;
+        pixel.u32 = Blt_XColorToPixel(colorPtr);
+        pixel.Alpha = 0x80;
         Blt_PaintArrowHead(picture, ix, iy, iw, ih, 
-                           Blt_XColorToPixel(colorPtr), direction);
+                           pixel.u32, direction);
         *pictPtr = picture;
     }
     return *pictPtr;
@@ -4381,18 +4385,21 @@ GetMinArrowPicture(Scale *scalePtr, int w, int h, int direction)
         (Blt_Picture_Height(*pictPtr) != h)) {
         Blt_Picture picture;
         int ix, iy, ih, iw;
-
+        Blt_Pixel pixel;
+        
         if (*pictPtr != NULL) {
             Blt_FreePicture(*pictPtr);
         }
-        ih = h * 40 / 100;
-        iw = w * 80 / 100;
+        ih = h;
+        iw = w;
         picture = Blt_CreatePicture(w, h);
         Blt_BlankPicture(picture, 0x0);
         iy = (h - ih) / 2;
         ix = (w - iw) / 2;
+        pixel.u32 = Blt_XColorToPixel(colorPtr);
+        pixel.Alpha = 0x80;
         Blt_PaintArrowHead(picture, ix, iy, iw, ih, 
-                           Blt_XColorToPixel(colorPtr), direction);
+                           pixel.u32, direction);
         *pictPtr = picture;
     }
     return *pictPtr;
@@ -4506,7 +4513,7 @@ DrawScale(Scale *scalePtr, Drawable drawable)
             labelPtr = Blt_Chain_GetValue(link);
             /* Draw major tick labels */
             Blt_DrawText(scalePtr->tkwin, drawable, labelPtr->string, &ts, 
-                (int)labelPtr->anchorPos.x, (int)labelPtr->anchorPos.y);
+                labelPtr->x, labelPtr->y);
         }
     }
     /* Max arrow. */
@@ -4524,7 +4531,8 @@ DrawScale(Scale *scalePtr, Drawable drawable)
                                   scalePtr->arrowHeight, ARROW_DOWN);
             Blt_PaintPicture(scalePtr->painter, drawable, picture, 0, 0, 
                 scalePtr->arrowWidth, scalePtr->arrowHeight, 
-                x - scalePtr->arrowWidth, scalePtr->y1 - scalePtr->arrowHeight,
+                x - scalePtr->arrowWidth / 2,
+                scalePtr->y1 - scalePtr->arrowHeight,
                 0);
         } else {
             int y;
@@ -4535,7 +4543,7 @@ DrawScale(Scale *scalePtr, Drawable drawable)
             Blt_PaintPicture(scalePtr->painter, drawable, picture, 0, 0, 
                 scalePtr->arrowHeight, scalePtr->arrowWidth, 
                 scalePtr->x1 - scalePtr->arrowHeight, 
-                y - scalePtr->arrowWidth, 0);
+                y - scalePtr->arrowWidth / 2, 0);
         }
    }
     /* Min arrow. */
@@ -4553,7 +4561,8 @@ DrawScale(Scale *scalePtr, Drawable drawable)
                                   scalePtr->arrowHeight, ARROW_UP);
             Blt_PaintPicture(scalePtr->painter, drawable, picture, 0, 0, 
                 scalePtr->arrowWidth, scalePtr->arrowHeight, 
-                x - scalePtr->arrowWidth, scalePtr->y1 - scalePtr->arrowHeight,
+                x - scalePtr->arrowWidth / 2,
+                             scalePtr->y2,
                 0);
         } else {
             int y;
@@ -4563,7 +4572,7 @@ DrawScale(Scale *scalePtr, Drawable drawable)
                                   scalePtr->arrowWidth, ARROW_LEFT);
             Blt_PaintPicture(scalePtr->painter, drawable, picture, 0, 0, 
                 scalePtr->arrowHeight, scalePtr->arrowWidth, 
-                scalePtr->x1 - scalePtr->arrowHeight, y - scalePtr->arrowWidth,
+                scalePtr->x1 - scalePtr->arrowHeight, y - scalePtr->arrowWidth /2,
                 0);
         }
     }
@@ -4589,7 +4598,8 @@ DrawScale(Scale *scalePtr, Drawable drawable)
             }
             if (scalePtr->flags & SHOW_GRIP) {
                 Blt_Bg_FillRectangle(scalePtr->tkwin, drawable, bg, 
-                        x, scalePtr->y1 - scalePtr->gripHeight / 2,
+                        x - scalePtr->gripWidth / 2,
+                (scalePtr->y2 + scalePtr->y1) / 2 - scalePtr->gripHeight / 2,
                         scalePtr->gripWidth, scalePtr->gripHeight,
                         scalePtr->gripBorderWidth, scalePtr->gripRelief);
             } 
@@ -4605,7 +4615,8 @@ DrawScale(Scale *scalePtr, Drawable drawable)
             }
             if (scalePtr->flags & SHOW_GRIP) {
                 Blt_Bg_FillRectangle(scalePtr->tkwin, drawable, bg, 
-                        scalePtr->x1 - scalePtr->gripHeight / 2, y,
+         (scalePtr->x2 + scalePtr->x1) / 2 - scalePtr->gripHeight / 2,
+                        y - scalePtr->gripWidth / 2,
                         scalePtr->gripHeight, scalePtr->gripWidth,
                         scalePtr->gripBorderWidth, scalePtr->gripRelief);
             } 
