@@ -5,13 +5,13 @@ set normalBg [blt::background create linear \
 blt::palette create bluegreen -colorformat name -cdata {
     white  green2
 } 
-blt::scale .s -orient horizontal \
+blt::scale .s -orient vertical \
     -loose no -min -23.3 -max 43.2 \
-    -title fred  -show value \
+    -title fred \
     -palette bluegreen  \
-    -width 5i -bg $normalBg
+    -scale time \
+    -height 5i -bg $normalBg
 
 blt::table . \
     0,0 .s -fill both
 
-puts stderr [.s configure]

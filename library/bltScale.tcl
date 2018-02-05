@@ -48,6 +48,16 @@ namespace eval blt {
     }
 }
 
+bind BltScale <Enter> {
+    %W configure -state active
+}
+bind BltScale <Leave> {
+    %W configure -state normal
+}
+bind BltScale <B1-Enter> {
+}
+bind BltScale <B1-Leave> {
+}
 
 # ----------------------------------------------------------------------
 #
@@ -74,5 +84,38 @@ namespace eval blt {
 # ----------------------------------------------------------------------
 
 proc blt::Scale::Init { w } {
+    $w bind minarrow <Enter> {
+        %W activate minarrow
+    }
+    $w bind minarrow <Leave> {
+        %W deactivate minarrow
+    }
+    $w bind maxarrow <Enter> {
+        %W activate maxarrow
+    }
+    $w bind maxarrow <Leave> {
+        %W deactivate maxarrow
+    }
+    $w bind grip <Enter> {
+        %W activate grip
+    }
+    $w bind grip <Leave> {
+        %W deactivate grip
+    }
+    $w bind grip <ButtonPress-1> {
+        %W configure -griprelief sunken
+    }
+    $w bind grip <ButtonRelease-1> {
+        %W configure -griprelief raised
+    }
+    $w bind grip <B1-Motion> {
+        %W set [%W invtransform %x %y]
+    }
+    $w bind minarrow <B1-Motion> {
+        %W configure -rangemin [%W invtransform %x %y]
+    }
+    $w bind maxarrow <B1-Motion> {
+        %W configure -rangemax [%W invtransform %x %y]
+    }
 }
 
