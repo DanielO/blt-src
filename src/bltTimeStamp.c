@@ -2904,8 +2904,10 @@ Blt_SecondsToDate(double seconds, Blt_DateTime *datePtr)
 #endif
     floorSecs = floor(seconds);
     frac = seconds - floorSecs;
+#if DEBUG
 fprintf(stderr, "seconds=%.17g floorSecs=%.17g fs=%.17g frac=%.5g %5g\n", seconds, floorSecs, 
 	seconds - ((long)seconds - 1), frac, frac);
+#endif
     seconds = floorSecs;
     numDays = ((int64_t)seconds) / SECONDS_DAY;
     rem  = ((int64_t)seconds) % SECONDS_DAY;
@@ -2926,6 +2928,10 @@ fprintf(stderr, "seconds=%.17g floorSecs=%.17g fs=%.17g frac=%.5g %5g\n", second
     datePtr->min = (int) (rem / SECONDS_MINUTE);
     datePtr->sec = (int) (rem % SECONDS_MINUTE);
 
+#if DEBUG
+    fprintf(stderr, "date hr=%d min=%d sec=%d\n", datePtr->hour, datePtr->min,
+            datePtr->sec);
+#endif
     /* Step 2: Compute the day of week: 0=Sunday 6=Saturday. */
     datePtr->wday = (EPOCH_WDAY + numDays) % 7;
     if (datePtr->wday < 0) {
@@ -3019,6 +3025,12 @@ Blt_GetTimeFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, double *secondsPtr)
  *      Formats the date structure using the given format specifications
  *      into a string.  The string is saved in the dynamic string. It is
  *      assumed that the dynamic string has already been initialized.
+ *      Mostly compatible with Unix date(1) command format.  
+ *
+ *      'f'     fractional portion of date (nonstandard).
+ *
+ *      Unused format characters: 'E', 'i', 'J', 'K', 'L', 'o', 'O', 'q', 
+ *                                'Q', 'v', 'X', 'Z'
  *
  * Results:
  *      None.
@@ -3133,6 +3145,9 @@ Blt_FormatDate(Blt_DateTime *datePtr, const char *fmt, Tcl_DString *resultPtr)
         case 'S':                       /* Second (ss) */
             count += 2;
             break;
+        case 't':                       /* Tab. */
+            count += 1;
+            break;
         case 'T':                       /* The time as "%H:%M:%S". */
             count += 8;
             break;
@@ -3239,13 +3254,15 @@ Blt_FormatDate(Blt_DateTime *datePtr, const char *fmt, Tcl_DString *resultPtr)
             {
 	       char buf[20];
 
-fprintf(stderr, "datePtr->frac = %.17g %.9g\n", datePtr->frac, datePtr->frac);
+#if DEBUG
+               fprintf(stderr, "datePtr->frac = %.17g %.9g %g\n", 
+                       datePtr->frac, datePtr->frac, datePtr->frac);
+#endif
     	       numBytes = sprintf(buf, "%.9g", datePtr->frac);
                if (numBytes == 1) {
-	           strcpy(bp, ".0");
-		   numBytes = 2;
+                   numBytes = 0;        /* No fraction, ignore. */
                } else {
-	           strcpy(bp, buf+1);     /* Skip leading zero. */
+	           strcpy(bp, buf+1);   /* Skip leading zero. */
 	           numBytes--;
                }
  	       bp += numBytes;
@@ -3330,20 +3347,16 @@ fprintf(stderr, "datePtr->frac = %.17g %.9g\n", datePtr->frac, datePtr->frac);
         case 's':                       /* Seconds since epoch, may contain
                                          * fraction. */
             Blt_DateToSeconds(datePtr, &seconds);
-#if SIZEOF_LONG == 4
-#if defined(__MINGW32__) || defined(__CYGWIN__)
-            numBytes = sprintf(bp, "%I64d", (int64_t)seconds);
-#else 
-            numBytes = sprintf(bp, "%lld", (int64_t)seconds);
-#endif  /* MINGW32 || CYGWIN */
-#else
-            numBytes = sprintf(bp, "%ld", (int64_t)seconds);
-#endif  /* SIZEOF_LONG == 4 */
+            numBytes = sprintf(bp, "%" PRId64, (int64_t)seconds);
             bp += numBytes;
             break;
         case 'S':                       /* Second (00-60) */
             sprintf(bp, "%02d", datePtr->sec);
             bp += 2;
+            break;
+        case 't':                       /* Tab. */
+            bp[0] = '\t';
+            bp += 1;
             break;
         case 'T':                       /* The time as "hh:mm:ss". */
             sprintf(bp, "%02d:%02d:%02d",

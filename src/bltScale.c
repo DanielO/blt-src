@@ -2812,7 +2812,7 @@ SecondTicks(Scale *scalePtr)
     scalePtr->major.initial = tickMin;
     scalePtr->major.numSteps = numTicks;
     scalePtr->major.step = step;
-    scalePtr->major.fmt = "%H:%M:%s";
+    scalePtr->major.fmt = "%H:%M:%S%f";
     scalePtr->major.timeUnits = UNITS_SECONDS;
     scalePtr->major.axisScale = AXIS_TIME;
     scalePtr->major.range = tickMax - tickMin;

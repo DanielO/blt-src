@@ -164,9 +164,6 @@ The following substitutions may be used to format a timestamp.
   **%b**
           Abbreviated month. Example: "Jan".
 
-  **%h**
-          Month. Example: "January".
-
   **%B**
           Month. Example: "Month".
 
@@ -185,6 +182,9 @@ The following substitutions may be used to format a timestamp.
   **%e**
           Day of month, space padded. Example: " 1".
 
+  **%f**
+          Fractional seconds. Example: ".001".
+
   **%F**
           Full date yyyy-mm-dd. Example: "1970-01-01".
 
@@ -193,6 +193,9 @@ The following substitutions may be used to format a timestamp.
 
   **%G**
           ISO week year. Example: "1970".
+
+  **%h**
+          Month. Example: "January".
 
   **%H**
           Hour (0-23). Example: "0".
@@ -218,6 +221,9 @@ The following substitutions may be used to format a timestamp.
   **%N**
           Nanoseconds (000000000..999999999). Example: "00000000000000".
 
+  **%p**
+          am or pm.  Example "am".
+
   **%P**
           AM or PM.  Example "AM".
 
@@ -231,16 +237,16 @@ The following substitutions may be used to format a timestamp.
           12 hour clock time (hh:mm:ss AM or PM). Example: "01:59:00 AM".
 
   **%s**
-          Seconds since epoch, (may contain fraction). Example "".
+          Seconds since epoch (may contain fraction). Example "12.23".
 
   **%S**
           Seconds (00-59). Example: "00".
 
+  **%t**
+          Tab.
+
   **%T**
           The time as "**%H**:**%M**:**%S**". Example: "".
-
-  **%w**
-          Day of week (0-6). Example: "0".
 
   **%u**
           Day of week (1-7). Example "1".
@@ -248,11 +254,14 @@ The following substitutions may be used to format a timestamp.
   **%U**
           Week number (0-53). Sunday is first day of week. Example "".
 
-  **%W**
-          Week number (0-53)                                    "00"
-
   **%V**
           ISO Week number. Monday is first day of week. Example: "".
+
+  **%w**
+          Day of week (0-6). Example: "0".
+
+  **%W**
+          Week number (0-53)                                    "00"
 
   **%x**
           Date representation mm/dd/yy. Example: "".

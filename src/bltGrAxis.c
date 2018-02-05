@@ -7850,7 +7850,7 @@ SecondTicks(Axis *axisPtr, double min, double max)
     axisPtr->major.ticks.initial = tickMin;
     axisPtr->major.ticks.numSteps = numTicks;
     axisPtr->major.ticks.step = step;
-    axisPtr->major.ticks.fmt = "%H:%M:%s";
+    axisPtr->major.ticks.fmt = "%H:%M:%S%f";
     axisPtr->major.ticks.timeUnits = TIME_SECONDS;
     axisPtr->major.ticks.scaleType = SCALE_TIME;
     axisPtr->major.ticks.range = tickMax - tickMin;
