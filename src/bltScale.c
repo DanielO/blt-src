@@ -374,9 +374,11 @@ typedef struct _Scale {
     Blt_Painter painter;
 
     double mark;                        /* Current value in the interval. */
+    double resolution;
 
     double tickMin, tickMax;            /* Tick range in linear scale. */
     double prevMin, prevMax;
+    double stepSize;
     double reqStep;                     /* If > 0.0, overrides the computed
                                          * major tick interval.  Otherwise
                                          * a stepsize is automatically
@@ -482,8 +484,13 @@ typedef struct _Scale {
     GC drawGC;
     GC disabledTickGC;
 
-    const char *title;                  /* Title of the scale. */
-    int titleX, titleY, titleWidth, titleHeight;  
+    const char *units;                  /* Units. Displayed with the
+                                         * value.  */
+    const char *title;                  /* If non-NULL, this is the title
+                                         * that is displayed at the top of
+                                         * the scale. */
+    int titleX, titleY;                 /* Position of the title. */
+    int titleWidth, titleHeight;        /* Dimension of the title. */
     Tk_Anchor titleAnchor;
     Tk_Justify titleJustify;
     
@@ -552,6 +559,7 @@ static double logTable[] = {
 #define DEF_SCALE               "linear"
 #define DEF_SHOW                "all"
 #define DEF_STATE               "normal"
+#define DEF_RESOLUTION          "0.0"
 #define DEF_STEPSIZE            "0.0"
 #define DEF_SUBDIVISIONS        "2"
 #define DEF_TAGS                "all"
@@ -567,6 +575,7 @@ static double logTable[] = {
 #define DEF_TITLE_COLOR         RGB_BLACK
 #define DEF_TITLE_FONT          STD_FONT_NORMAL
 #define DEF_TITLE_JUSTIFY       "c"
+#define DEF_UNITS               (char *)NULL
 #define DEF_VALUE_COLOR          RGB_BLACK
 #define DEF_VALUE_FONT          "Math 6"
 #define DEF_VALUE_ANGLE          "0.0"
@@ -667,7 +676,7 @@ static Blt_ConfigSpec configSpecs[] =
     {BLT_CONFIG_COLOR, "-disabledforeground", "disabledForeground",
         "DisabledForeground", DEF_DISABLED_FG,
         Blt_Offset(Scale, disabledFgColor), 0}, 
-    {BLT_CONFIG_INT, "-divisions", "division", "Divisions", DEF_DIVISIONS,
+    {BLT_CONFIG_INT, "-divisions", "divisions", "Divisions", DEF_DIVISIONS, 
         Blt_Offset(Scale, reqNumMajorTicks), BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_SYNONYM, "-fg", "color"},
     {BLT_CONFIG_SYNONYM, "-foreground", "color"},
@@ -729,6 +738,9 @@ static Blt_ConfigSpec configSpecs[] =
         Blt_Offset(Scale, reqInnerLeft), 0, &limitOption},
     {BLT_CONFIG_RELIEF, "-relief", "relief", "Relief", DEF_RELIEF,
         Blt_Offset(Scale, relief), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_DOUBLE, "-resolution", "resolution", "Resolution", 
+        DEF_RESOLUTION, Blt_Offset(Scale, resolution), 
+        BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_CUSTOM, "-scale", "scale", "Scale", DEF_SCALE,
         Blt_Offset(Scale, scale),
         BLT_CONFIG_DONT_SET_DEFAULT, &scaleOption},
@@ -768,6 +780,8 @@ static Blt_ConfigSpec configSpecs[] =
     {BLT_CONFIG_JUSTIFY, "-titlejustify", "titleJustify", "TitleJustify", 
         DEF_TITLE_JUSTIFY, Blt_Offset(Scale, titleJustify), 
         BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_STRING, "-units", "units", "Units", DEF_UNITS,
+        Blt_Offset(Scale, units), BLT_CONFIG_NULL_OK},
     {BLT_CONFIG_FLOAT, "-valueangle", "valueAngle", "ValueAngle", DEF_VALUE_ANGLE,
         Blt_Offset(Scale, valueAngle), BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_FONT, "-valuefont", "valueFont", "ValueFont",
@@ -3999,6 +4013,18 @@ ConfigureScale(
     if (scalePtr->mark > scalePtr->innerRight) {
         scalePtr->mark = scalePtr->innerRight;
     }
+    if (scalePtr->resolution > 0.0) {
+        double mark;
+
+        mark = UROUND(scalePtr->mark, scalePtr->resolution);
+        if (mark < scalePtr->innerLeft) {
+            mark += scalePtr->resolution;
+        }
+        if (mark > scalePtr->innerRight) {
+            mark -= scalePtr->resolution;
+        }
+        scalePtr->mark = mark;
+    }
     if (IsLogScale(scalePtr)) {
         LogScaleAxis(scalePtr);
     } else if (IsTimeScale(scalePtr)) {
@@ -5246,18 +5272,30 @@ static int
 SetOp(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 {
     Scale *scalePtr = clientData;
-    double x;
+    double mark;
     
-    if (Blt_GetDoubleFromObj(interp, objv[2], &x) != TCL_OK) {
+    if (Blt_GetDoubleFromObj(interp, objv[2], &mark) != TCL_OK) {
         return TCL_ERROR;
     }
     /* Automatically bound the value to the inner interval. */
-    if (x < scalePtr->innerLeft) {
-        x = scalePtr->innerLeft;
-    } else if (x > scalePtr->innerRight) {
-        x = scalePtr->innerRight;
+    if (mark < scalePtr->innerLeft) {
+        mark = scalePtr->innerLeft;
+    } else if (mark > scalePtr->innerRight) {
+        mark = scalePtr->innerRight;
     }
-    scalePtr->mark = x;
+    if (scalePtr->resolution > 0.0) {
+        double x;
+
+        x = UROUND(mark, scalePtr->resolution);
+        if (x < scalePtr->innerLeft) {
+            x += scalePtr->resolution;
+        }
+        if (x > scalePtr->innerRight) {
+            x -= scalePtr->resolution;
+        }
+        mark = x;
+    }
+    scalePtr->mark = mark;
     EventuallyRedraw(scalePtr);
     return TCL_OK;
 }
