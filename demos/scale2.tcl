@@ -10,8 +10,10 @@ blt::scale .s -orient vertical \
     -title fred \
     -palette bluegreen  \
     -scale time \
-    -height 5i -bg $normalBg
+    -height 5i -bg $normalBg \
+    -resolution 1
 
 blt::table . \
     0,0 .s -fill both
 
+focus .s

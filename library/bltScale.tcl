@@ -59,6 +59,37 @@ bind BltScale <B1-Enter> {
 bind BltScale <B1-Leave> {
 }
 
+bind BltScale <KeyPress-Left> {
+    if { [%W cget -orientation] == "horizontal" &&
+         [%W cget -resolution] > 0.0 } {
+        %W set [expr [%W cget -mark] - [%W cget -resolution]]
+    }
+}
+bind BltScale <KeyPress-Right> {
+    if { [%W cget -orientation] == "horizontal" &&
+         [%W cget -resolution] > 0.0 } {
+        %W set [expr [%W cget -mark] + [%W cget -resolution]]
+    }
+}
+bind BltScale <KeyPress-Down> {
+    if { [%W cget -orientation] == "vertical" &&
+         [%W cget -resolution] > 0.0 } {
+        %W set [expr [%W cget -mark] - [%W cget -resolution]]
+    }
+}
+bind BltScale <KeyPress-Up> {
+    if { [%W cget -orientation] == "vertical" &&
+         [%W cget -resolution] > 0.0 } {
+        %W set [expr [%W cget -mark] + [%W cget -resolution]]
+    }
+}
+bind BltScale <KeyPress-Home> {
+    %W set [%W cget -min]
+}
+bind BltScale <KeyPress-End> {
+    %W set [%W cget -max]
+}
+
 # ----------------------------------------------------------------------
 #
 # Init

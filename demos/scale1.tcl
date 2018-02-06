@@ -14,4 +14,4 @@ blt::scale .s -orient horizontal \
 blt::table . \
     0,0 .s -fill both
 
-puts stderr [.s configure]
+focus .s
