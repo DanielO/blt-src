@@ -136,3 +136,5 @@ tkwait variable done
 .ss.c postscript -file /tmp/junk.ps
 exit 0
 }
+
+puts stderr [.ss.c itemconfigure $id] 
