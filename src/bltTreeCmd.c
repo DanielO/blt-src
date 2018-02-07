@@ -248,6 +248,7 @@ typedef struct {
 } ChildrenSwitches;
 
 #define CHILDREN_NOCOMPLAIN     (1<<0)
+#define CHILDREN_LABELS         (1<<1)
 
 static Blt_SwitchSpec childrenSwitches[] = 
 {
@@ -255,6 +256,8 @@ static Blt_SwitchSpec childrenSwitches[] =
         Blt_Offset(ChildrenSwitches, from), 0, 0, &positionSwitch},
     {BLT_SWITCH_BITS_NOARG, "-nocomplain", "", (char *)NULL,
         Blt_Offset(ChildrenSwitches, flags), 0, CHILDREN_NOCOMPLAIN},
+    {BLT_SWITCH_BITS_NOARG, "-labels", "", (char *)NULL,
+        Blt_Offset(ChildrenSwitches, flags), 0, CHILDREN_LABELS},
     {BLT_SWITCH_CUSTOM,  "-to",  "node", (char *)NULL,
         Blt_Offset(ChildrenSwitches, to), 0, 0, &positionSwitch},
     {BLT_SWITCH_END}
@@ -4530,7 +4533,11 @@ ChildrenOp(ClientData clientData, Tcl_Interp *interp, int objc,
         if (count < switches.from) {
             continue;
         }
-        objPtr = Tcl_NewWideIntObj(Blt_Tree_NodeId(node));
+        if (switches.flags & CHILDREN_LABELS) {
+            objPtr = Tcl_NewStringObj(Blt_Tree_NodeLabel(node), -1);
+        } else {
+            objPtr = Tcl_NewWideIntObj(Blt_Tree_NodeId(node));
+        }
         Tcl_ListObjAppendElement(interp, listObjPtr, objPtr);
         if (count == switches.to) {
             break;
