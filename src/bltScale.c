@@ -732,15 +732,17 @@ static Blt_ConfigSpec configSpecs[] =
         Blt_Offset(Scale, palette), 0, &paletteOption},
     {BLT_CONFIG_COLOR, "-rangecolor", "rangeColor", "RangeColor", 
         DEF_RANGE_COLOR,  Blt_Offset(Scale, rangeColor), 0}, 
-    {BLT_CONFIG_CUSTOM, "-rangemax", "reqOuterRight", "RangeMax", (char *)NULL, 
+    {BLT_CONFIG_CUSTOM, "-rangemax", "rangeMax", "RangeMax", (char *)NULL, 
         Blt_Offset(Scale, reqInnerRight), 0, &limitOption},
-    {BLT_CONFIG_CUSTOM, "-rangemin", "reqInnerLeft", "RangeMin", (char *)NULL, 
+    {BLT_CONFIG_CUSTOM, "-rangemin", "rangeMin", "RangeMin", (char *)NULL, 
         Blt_Offset(Scale, reqInnerLeft), 0, &limitOption},
     {BLT_CONFIG_RELIEF, "-relief", "relief", "Relief", DEF_RELIEF,
         Blt_Offset(Scale, relief), BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_DOUBLE, "-resolution", "resolution", "Resolution", 
         DEF_RESOLUTION, Blt_Offset(Scale, resolution), 
         BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_SYNONYM, "-rmax", "rangeMax"},
+    {BLT_CONFIG_SYNONYM, "-rmin", "rangeMin"},
     {BLT_CONFIG_CUSTOM, "-scale", "scale", "Scale", DEF_SCALE,
         Blt_Offset(Scale, scale),
         BLT_CONFIG_DONT_SET_DEFAULT, &scaleOption},
@@ -3951,7 +3953,7 @@ ConfigureScale(
     scalePtr->arrowHeight = fm.linespace;
     scalePtr->arrowWidth = fm.linespace;
     scalePtr->gripHeight = fm.linespace;
-    scalePtr->gripWidth = fm.linespace / 2;
+    scalePtr->gripWidth = fm.linespace * 60 / 100;
 
     if (scalePtr->painter == NULL) {
         scalePtr->painter = Blt_GetPainter(scalePtr->tkwin, 1.0);
@@ -4003,6 +4005,21 @@ ConfigureScale(
         tmp = scalePtr->innerLeft;
         scalePtr->innerLeft = scalePtr->innerRight;
         scalePtr->innerRight = tmp;
+    }
+    /* If there's a resolution set, adjust the range accordingly. */
+    if (scalePtr->resolution > 0.0) {
+        double left, right;
+
+        left = UROUND(scalePtr->innerLeft, scalePtr->resolution);
+        if (left < scalePtr->outerLeft) {
+            left += scalePtr->resolution;
+        }
+        right = UROUND(scalePtr->innerRight, scalePtr->resolution);
+        if (right > scalePtr->outerRight) {
+            right -= scalePtr->resolution;
+        }
+        scalePtr->innerLeft = left;
+        scalePtr->innerRight = right;
     }
     if (!DEFINED(scalePtr->mark)) {
         scalePtr->mark = scalePtr->innerLeft;
@@ -5248,13 +5265,43 @@ IdentifyOp(ClientData clientData, Tcl_Interp *interp, int objc,
 static int
 GetOp(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 {
+    Scale *scalePtr = clientData;
+    const char *string;
+    double value;
+    char c;
+    int length;
+
+    string = Tcl_GetStringFromObj(objv[2], &length);
+    c = string[0];
+    if ((c == 'm') && (length > 1) &&
+        (strncmp(string, "min", length) == 0)) {
+        value = scalePtr->outerLeft;
+    } else if ((c == 'm') && (length > 2) &&
+               (strncmp(string, "max", length) == 0)) {
+        value = scalePtr->outerRight;
+    } else if ((c == 'r') && (length > 2) &&
+               (strncmp(string, "rmin", length) == 0)) {
+        value = scalePtr->innerLeft;
+    } else if ((c == 'r') && (length > 2) &&
+               (strncmp(string, "rmax", length) == 0)) {
+        value = scalePtr->innerRight;
+    } else if ((c == 'm') && (length > 2) &&
+               (strncmp(string, "mark", length) == 0)) {
+        value = scalePtr->mark;
+    } else {
+        Tcl_AppendResult(interp, "unknown scale part \"", string, 
+                         "\": should be max, min, rmin, rmax, or mark.", 
+                         (char *)NULL);
+        return TCL_ERROR;
+    }
+    Tcl_SetDoubleObj(Tcl_GetObjResult(interp), value);
     return TCL_OK;
 }
 
 /*
  *---------------------------------------------------------------------------
  *
- * GetOp --
+ * SetOp --
  *
  *    Returns the name of the picked axis (using the axis bind operation).
  *    Right now, the only name accepted is "current".
@@ -5277,23 +5324,15 @@ SetOp(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
     if (Blt_GetDoubleFromObj(interp, objv[2], &mark) != TCL_OK) {
         return TCL_ERROR;
     }
-    /* Automatically bound the value to the inner interval. */
+    /* If there's a resolution set, round to the nearest unit.  */
+    if (scalePtr->resolution > 0.0) {
+        mark = UROUND(mark, scalePtr->resolution);
+    }
+    /* Bound the new value to the inner interval. */
     if (mark < scalePtr->innerLeft) {
         mark = scalePtr->innerLeft;
     } else if (mark > scalePtr->innerRight) {
         mark = scalePtr->innerRight;
-    }
-    if (scalePtr->resolution > 0.0) {
-        double x;
-
-        x = UROUND(mark, scalePtr->resolution);
-        if (x < scalePtr->innerLeft) {
-            x += scalePtr->resolution;
-        }
-        if (x > scalePtr->innerRight) {
-            x -= scalePtr->resolution;
-        }
-        mark = x;
     }
     scalePtr->mark = mark;
     EventuallyRedraw(scalePtr);

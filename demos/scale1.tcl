@@ -9,7 +9,7 @@ blt::scale .s -orient horizontal \
     -loose no -min -23.3 -max 43.2 \
     -title fred  -show value \
     -palette bluegreen  \
-    -width 5i -bg $normalBg -resolution 5.0
+    -width 5i -bg $normalBg -resolution 1.0
 
 blt::table . \
     0,0 .s -fill both
