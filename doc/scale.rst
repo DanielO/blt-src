@@ -269,6 +269,7 @@ command.  The following operations are available for *scale* widgets:
     focus highlight is drawn around the widget.  The default is "2".
 
   **-icon** *imageName* 
+
     Specifies an image to be displayed as an icon on the left of the text
     in *pathName*.  *ImageName* is the name of an Tk photo or BLT picture.
     If *imageName* is "", no icon is displayed. The default is "".
