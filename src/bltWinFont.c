@@ -1517,14 +1517,6 @@ ExtFontPixelSizeProc(_Blt_Font *fontPtr)
 }
 
 static const char *
-ExtFontFamilyProc(_Blt_Font *fontPtr) 
-{
-    ExtFontset *setPtr = fontPtr->clientData;
-
-    return ((TkFont *)setPtr->tkFont)->fa.family;
-}
-
-static const char *
 ExtFontWeightProc(_Blt_Font *fontPtr) 
 {
     int weight; 

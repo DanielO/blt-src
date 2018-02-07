@@ -25,5 +25,5 @@ package require blt_picture_ps
 package require blt_picture_tga 
 package require blt_picture_tif 
 package require blt_picture_xbm 
-package require blt_picture_xpm 
+#package require blt_picture_xpm 
 package require blt_picture_photo 
