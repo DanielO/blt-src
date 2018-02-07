@@ -616,8 +616,10 @@ static Blt_Font_NameProc                tkFontNameProc;
 static Blt_Font_PixelSizeProc           tkFontPixelSizeProc;
 static Blt_Font_PointSizeProc           tkFontPointSizeProc;
 static Blt_Font_PostscriptNameProc      tkFontPostscriptNameProc;
+static Blt_Font_SlantProc               tkFontSlantProc;
 static Blt_Font_TextWidthProc           tkFontTextWidthProc;
 static Blt_Font_UnderlineCharsProc      tkFontUnderlineCharsProc;
+static Blt_Font_WeightProc              tkFontWeightProc;
 
 static Blt_FontClass tkFontClass = {
     FONTSET_TK,
@@ -634,8 +636,10 @@ static Blt_FontClass tkFontClass = {
     tkFontPixelSizeProc,                    /* Blt_Font_PixelSizeProc */
     tkFontPointSizeProc,                    /* Blt_Font_PointSizeProc */
     tkFontPostscriptNameProc,               /* Blt_Font_PostscriptNameProc */
+    tkFontSlantProc,                        /* Blt_Font_SlantProc */
     tkFontTextWidthProc,                    /* Blt_Font_TextWidthProc */
     tkFontUnderlineCharsProc,               /* Blt_Font_UnderlineCharsProc */
+    tkFontWeightProc,                       /* Blt_Font_WeightProc */
 };
 
 static tkFontPattern *
@@ -1021,7 +1025,7 @@ tkFontGetPattern(Tcl_Interp *interp, Tcl_Obj *objPtr)
 
 static void
 tkFontWriteXLFDDescription(Tk_Window tkwin, tkFontPattern *patternPtr, 
-                       Tcl_DString *resultPtr)
+                           Tcl_DString *resultPtr)
 {
     const char *string;
     int size;
@@ -1167,6 +1171,32 @@ static double
 tkFontPixelSizeProc(_Blt_Font *fontPtr) 
 {
     return ((TkFont *)fontPtr->clientData)->fa.size;
+}
+
+static const char *
+tkFontWeightProc(_Blt_Font *fontPtr) 
+{
+    int weight; 
+
+    weight = ((TkFont *)fontPtr->clientData)->fa.weight;
+    switch (weight) {
+    case TK_FW_NORMAL:          return "normal";
+    case TK_FW_BOLD:            return "bold";
+    default:                    return "???";
+    }
+}
+
+static const char *
+tkFontSlantProc(_Blt_Font *fontPtr) 
+{
+    int slant; 
+
+    slant = ((TkFont *)fontPtr->clientData)->fa.slant;
+    switch (slant) {
+    case TK_FS_ROMAN:           return "roman";
+    case TK_FS_ITALIC:          return "italic";
+    default:                    return "???";
+    }
 }
 
 /* 
@@ -1381,8 +1411,10 @@ static Blt_Font_NameProc                ftFontNameProc;
 static Blt_Font_PixelSizeProc           ftFontPixelSizeProc;
 static Blt_Font_PointSizeProc           ftFontPointSizeProc;
 static Blt_Font_PostscriptNameProc      ftFontPostscriptNameProc;
+static Blt_Font_SlantProc               ftFontSlantProc;
 static Blt_Font_TextWidthProc           ftFontTextWidthProc;
 static Blt_Font_UnderlineCharsProc      ftFontUnderlineCharsProc;
+static Blt_Font_WeightProc              ftFontWeightProc;
 
 static Blt_FontClass ftFontClass = {
     FONTSET_FREETYPE,
@@ -1399,8 +1431,10 @@ static Blt_FontClass ftFontClass = {
     ftFontPixelSizeProc,              /* Blt_Font_PixelSizeProc */
     ftFontPointSizeProc,              /* Blt_Font_PixelSizeProc */
     ftFontPostscriptNameProc,         /* Blt_Font_PostscriptNameProc */
+    ftFontSlantProc,                  /* Blt_Font_SlantProc */
     ftFontTextWidthProc,              /* Blt_Font_TextWidthProc */
     ftFontUnderlineCharsProc,         /* Blt_Font_UnderlineCharsProc */
+    ftFontWeightProc,                 /* Blt_Font_WeightProc */
 };
 
 /* 
@@ -1675,6 +1709,36 @@ ftFontParseTkFontAttributeList(Tcl_Interp *interp, Tk_Window tkwin,
     return NULL;
 }
 
+static const char *
+ftNameOfSlant(int slant)
+{
+    switch (slant) {
+    case FC_SLANT_ROMAN:        return "roman";
+    case FC_SLANT_ITALIC:       return "italic";
+    case FC_SLANT_OBLIQUE:      return "oblique";
+    default:                    return "???";
+    }
+}
+
+static const char *
+ftNameOfWeight(int weight)
+{
+    switch (weight) {
+    case FC_WEIGHT_BLACK:       return "black";      
+    case FC_WEIGHT_BOLD:        return "bold";       
+    case FC_WEIGHT_BOOK:        return "book";       
+    case FC_WEIGHT_DEMIBOLD:    return "demibold";   
+    case FC_WEIGHT_EXTRABLACK:  return "extrablack"; 
+    case FC_WEIGHT_EXTRABOLD:   return "extrabold";  
+    case FC_WEIGHT_EXTRALIGHT:  return "extralight"; 
+    case FC_WEIGHT_LIGHT:       return "light";      
+    case FC_WEIGHT_MEDIUM:      return "medium";     
+    case FC_WEIGHT_REGULAR:     return "regular";    
+    case FC_WEIGHT_THIN:        return "thin";       
+    default:                    return "???";        
+    }
+}
+
 static FcPattern *
 ftFontGetAttributesFromObj(Tk_Window tkwin, Tcl_Interp *interp,
                            Tcl_Obj *fontObjPtr) 
@@ -1853,6 +1917,47 @@ ftFontParseXLFD(Tcl_Interp *interp, Tk_Window tkwin, char *fontName)
     return NULL;
 }
 
+static void
+ftFontPatternToDString(Tcl_Interp *interp, FcPattern *pattern, 
+                     Tcl_DString *resultPtr)
+{
+    FcChar8 *family;
+    FcResult result;
+    double size;
+    int weight, slant; 
+
+    Tcl_DStringInit(resultPtr);
+    /* Family */
+    result = FcPatternGetString(pattern, FC_FAMILY, 0, &family);
+    if (result == FcResultMatch) {
+        Tcl_DStringAppendElement(resultPtr, "-family");
+        Tcl_DStringAppendElement(resultPtr, family);
+    }
+
+    /* Weight */
+    result = FcPatternGetInteger(pattern, FC_WEIGHT, 0, &weight);
+    if (result != FcResultMatch) {
+        weight = FC_WEIGHT_MEDIUM;
+    }
+    Tcl_DStringAppendElement(resultPtr, "-weight");
+    Tcl_DStringAppendElement(resultPtr, ftNameOfWeight(weight));
+
+    /* Slant */
+    result = FcPatternGetInteger(pattern, FC_SLANT, 0, &slant);
+    if (result != FcResultMatch) {
+        slant = FC_SLANT_ROMAN;
+    }
+    Tcl_DStringAppendElement(resultPtr, "-slant");
+    Tcl_DStringAppendElement(resultPtr, ftNameOfSlant(slant));
+
+    /* Size */
+    result = FcPatternGetDouble(pattern, FC_SIZE, 0, &size);
+    if (result != FcResultMatch) {
+        size = 12.0;
+    }
+    Tcl_DStringAppendElement(resultPtr, "-size");
+    Tcl_DStringAppendElement(resultPtr, Blt_Dtoa(interp, size));
+}
 
 static void
 ftFontDeleteFontset(ftFontset *setPtr)
@@ -2418,7 +2523,7 @@ ftFontFamilyProc(_Blt_Font *fontPtr)
     ftFontset *setPtr = fontPtr->clientData;
     FcChar8 *string; 
     FcResult result;
-
+    
     result = FcPatternGetString(setPtr->pattern, FC_FAMILY, 0, &string);
     if (result == FcResultMatch) {
         return (const char *)string;
@@ -2454,6 +2559,33 @@ ftFontPixelSizeProc(_Blt_Font *fontPtr)
     return size;
 }
 
+static const char *
+ftFontWeightProc(_Blt_Font *fontPtr) 
+{
+    ftFontset *setPtr = fontPtr->clientData;
+    int weight; 
+    FcResult result;
+
+    result = FcPatternGetInteger(setPtr->pattern, FC_WEIGHT, 0, &weight);
+    if (result != FcResultMatch) {
+        weight = FC_WEIGHT_MEDIUM;
+    }
+    return ftNameOfWeight(weight);
+}
+
+static const char *
+ftFontSlantProc(_Blt_Font *fontPtr) 
+{
+    ftFontset *setPtr = fontPtr->clientData;
+    int slant; 
+    FcResult result;
+
+    result = FcPatternGetInteger(setPtr->pattern, FC_SLANT, 0, &slant);
+    if (result != FcResultMatch) {
+        slant = FC_SLANT_ROMAN;
+    }
+    return ftNameOfSlant(slant);
+}
 
 static Blt_Font
 ftFontDupProc(Tk_Window tkwin, _Blt_Font *fontPtr, double size) 
@@ -2467,7 +2599,8 @@ ftFontDupProc(Tk_Window tkwin, _Blt_Font *fontPtr, double size)
     ftFontset *setPtr = fontPtr->clientData;
     int isNew;
     int width, slant, weight;
-    
+    Tcl_DString ds;
+
     pattern = FcPatternCreate();
     FcPatternAddBool(pattern, FC_ANTIALIAS, FcTrue);
     FcPatternAddBool(pattern, FC_SCALABLE, FcTrue);
@@ -2510,10 +2643,12 @@ ftFontDupProc(Tk_Window tkwin, _Blt_Font *fontPtr, double size)
         fprintf(stderr, "doesn't match family=%s\n", family);
         return NULL;
     }
-    name = FcNameUnparse(matchingPattern);
+    Tcl_DStringInit(&ds);
+    ftFontPatternToDString(fontPtr->interp, matchingPattern, &ds);
+    name = Tcl_DStringValue(&ds);
     /* Check if we already have this font. */
     hPtr = Blt_CreateHashEntry(&fontSetTable, (char *)name, &isNew);
-    free(name);
+    Tcl_DStringFree(&ds);
 
     if (!isNew) {
         FcPatternDestroy(matchingPattern);

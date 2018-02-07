@@ -1442,8 +1442,10 @@ static Blt_Font_NameProc                ExtFontNameProc;
 static Blt_Font_PixelSizeProc           ExtFontPixelSizeProc;
 static Blt_Font_PointSizeProc           ExtFontPointSizeProc;
 static Blt_Font_PostscriptNameProc      ExtFontPostscriptNameProc;
+static Blt_Font_SlantProc               ExtFontSlantProc;
 static Blt_Font_TextWidthProc           ExtFontTextWidthProc;
 static Blt_Font_UnderlineCharsProc      ExtFontUnderlineCharsProc;
+static Blt_Font_WeightProc              ExtFontWeightProc;
 
 static Blt_FontClass extFontClass = {
     FONTSET_EXT,
@@ -1460,8 +1462,10 @@ static Blt_FontClass extFontClass = {
     ExtFontPixelSizeProc,               /* Blt_Font_PixelSizeProc */
     ExtFontPointSizeProc,               /* Blt_Font_PointSizeProc */
     ExtFontPostscriptNameProc,          /* Blt_Font_PostscriptNameProc */
+    ExtFontSlantProc,                   /* Blt_Font_SlantProc */
     ExtFontTextWidthProc,               /* Blt_Font_TextWidthProc */
     ExtFontUnderlineCharsProc,          /* Blt_Font_UnderlineCharsProc */
+    ExtFontWeightProc,                  /* Blt_Font_WeightProc */
 };
 
 static const char *
@@ -1511,6 +1515,41 @@ ExtFontPixelSizeProc(_Blt_Font *fontPtr)
     }
     return numPixels;
 }
+
+static const char *
+ExtFontFamilyProc(_Blt_Font *fontPtr) 
+{
+    ExtFontset *setPtr = fontPtr->clientData;
+
+    return ((TkFont *)setPtr->tkFont)->fa.family;
+}
+
+static const char *
+ExtFontWeightProc(_Blt_Font *fontPtr) 
+{
+    int weight; 
+
+    weight = ((TkFont *)fontPtr->clientData)->fa.weight;
+    switch (weight) {
+    case TK_FW_NORMAL:          return "normal";
+    case TK_FW_BOLD:            return "bold";
+    default:                    return "???";
+    }
+}
+
+static const char *
+ExtFontSlantProc(_Blt_Font *fontPtr) 
+{
+    int slant; 
+
+    slant = ((TkFont *)fontPtr->clientData)->fa.slant;
+    switch (slant) {
+    case TK_FS_ROMAN:           return "roman";
+    case TK_FS_ITALIC:          return "italic";
+    default:                    return "???";
+    }
+}
+
 
 static Blt_Font
 ExtFontDupProc(Tk_Window tkwin, _Blt_Font *fontPtr, double numPoints) 

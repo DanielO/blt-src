@@ -96,6 +96,8 @@ typedef double (Blt_Font_PointSizeProc)(Blt_Font font);
 typedef double (Blt_Font_PixelSizeProc)(Blt_Font font);
 typedef Blt_Font (Blt_Font_DuplicateProc)(Tk_Window tkwin, Blt_Font font, 
              double size);
+typedef const char *(Blt_Font_WeightProc)(Blt_Font font);
+typedef const char *(Blt_Font_SlantProc)(Blt_Font font);
 
 struct _Blt_FontClass {
     int type;                        /* Indicates the type of font used. */
@@ -112,8 +114,10 @@ struct _Blt_FontClass {
     Blt_Font_PixelSizeProc *pixelSizeProc;
     Blt_Font_PointSizeProc *pointSizeProc;
     Blt_Font_PostscriptNameProc *psNameProc;
+    Blt_Font_SlantProc *slantProc;
     Blt_Font_TextWidthProc *textWidthProc;
     Blt_Font_UnderlineCharsProc *underlineCharsProc;
+    Blt_Font_WeightProc *weightProc;
 };
 
 /* 
@@ -150,6 +154,8 @@ struct _Blt_Font {
         (*(f)->classPtr->underlineCharsProc)(d,w,g,f,s,l,x,y,a,b,m)
 #define Blt_Font_SetClipRegion(f,r) \
         ((f)->rgn = (r))
+#define Blt_Font_Slant(f)       (*(f)->classPtr->slantProc)(f)
+#define Blt_Font_Weight(f)      (*(f)->classPtr->weightProc)(f)
 
 BLT_EXTERN Blt_Font Blt_GetFont(Tcl_Interp *interp, Tk_Window tkwin, 
         const char *string);
