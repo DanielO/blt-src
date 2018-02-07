@@ -150,9 +150,10 @@ static const int numDaysYear[2] = { 365, 366 };
                                          * color. */
 #define ACTIVE_GRIP     (1<<14)         /* Draw grip with active background
                                          * and relief. */
+#define ACTIVE_VALUE    (1<<15)         /* Draw value with active colors. */
 
-#define AUTO_MAJOR      (1<<15)         /* Auto-generate major ticks. */
-#define AUTO_MINOR      (1<<16)         /* Auto-generate minor ticks. */
+#define AUTO_MAJOR      (1<<16)         /* Auto-generate major ticks. */
+#define AUTO_MINOR      (1<<17)         /* Auto-generate minor ticks. */
 
 #define SHOW_COLORBAR   (1<<20)
 #define SHOW_MARK       (1<<21)
@@ -168,6 +169,72 @@ static const int numDaysYear[2] = { 365, 366 };
                          SHOW_TICKLABELS|SHOW_TITLE|SHOW_VALUE)
 #define SHOW_ARROWS     (SHOW_MAXARROW|SHOW_MINARROW)
 
+
+#define DEF_ACTIVE_BG           STD_ACTIVE_BACKGROUND
+#define DEF_ACTIVE_FG           STD_ACTIVE_FOREGROUND
+#define DEF_ACTIVE_GRIP_BG      STD_ACTIVE_BACKGROUND
+#define DEF_ACTIVE_GRIP_FG      STD_ACTIVE_FOREGROUND
+#define DEF_ACTIVE_VALUE_FG     STD_ACTIVE_FOREGROUND
+#define DEF_ACTIVE_VALUE_BG     RGB_WHITE
+#define DEF_ACTIVE_MAXARROW_COLOR RGB_BLUE
+#define DEF_ACTIVE_MINARROW_COLOR RGB_RED
+#define DEF_ACTIVE_RELIEF       "raised"
+#define DEF_AXISLINE_COLOR      RGB_GREY30
+#define DEF_AXISLINE_WIDTH      "0.03i"
+#define DEF_BORDERWIDTH         "0"
+#define DEF_CHECKLIMITS         "0"
+#define DEF_COLORBAR_THICKNESS  "0.15i"
+#define DEF_COMMAND             (char *)NULL
+#define DEF_CURSOR              (char *)NULL
+#define DEF_DECREASING          "0"
+#define DEF_DISABLED_BG         STD_DISABLED_BACKGROUND
+#define DEF_DISABLED_FG         STD_DISABLED_FOREGROUND
+#define DEF_DIVISIONS           "10"
+#define DEF_FORMAT_COMMAND      (char *)NULL
+#define DEF_GRIP_BG             STD_NORMAL_BACKGROUND
+#define DEF_GRIP_RELIEF         "raised"
+#define DEF_GRIP_BORDERWIDTH    "1"
+#define DEF_HIDE                ""
+#define DEF_HEIGHT              "0"
+#define DEF_LOOSE               "0"
+#define DEF_MARK_COLOR          "0x80808080"
+#define DEF_MARK_THICKNESS      "0.01i"
+#define DEF_MAX                 "10.0"
+#define DEF_MIN                 "1.0"
+#define DEF_NORMAL_BG          STD_NORMAL_BACKGROUND
+#define DEF_NORMAL_FG          RGB_BLACK
+#define DEF_NORMAL_GRIP_BG      STD_NORMAL_BACKGROUND
+#define DEF_NORMAL_GRIP_FG      STD_NORMAL_FORERGOUND
+#define DEF_NORMAL_MAXARROW_COLOR "0x800000FF"
+#define DEF_NORMAL_MINARROW_COLOR "0x80FF0000"
+#define DEF_NORMAL_VALUE_COLOR  RGB_BLACK
+#define DEF_ORIENT              "horizontal"
+#define DEF_PALETTE             (char *)NULL
+#define DEF_RANGE_COLOR         RGB_WHITE
+#define DEF_RELIEF              "flat"
+#define DEF_SCALE               "linear"
+#define DEF_SHOW                "all"
+#define DEF_STATE               "normal"
+#define DEF_RESOLUTION          "0.0"
+#define DEF_STEPSIZE            "0.0"
+#define DEF_SUBDIVISIONS        "2"
+#define DEF_TAGS                "all"
+#define DEF_TICK_ANCHOR         "c"
+#define DEF_TICK_ANGLE          "0.0"
+#define DEF_TICK_COLOR          RGB_BLACK
+#define DEF_TICK_DIRECTION      "out"
+#define DEF_TICK_FONT           STD_FONT_NUMBERS
+#define DEF_TICK_LABEL_COLOR    RGB_BLACK
+#define DEF_TICK_LENGTH         "4"
+#define DEF_TICK_LINEWIDTH      "1"
+#define DEF_TITLE               (char *)NULL
+#define DEF_TITLE_COLOR         RGB_BLACK
+#define DEF_TITLE_FONT          STD_FONT_NORMAL
+#define DEF_TITLE_JUSTIFY       "c"
+#define DEF_UNITS               (char *)NULL
+#define DEF_VALUE_FONT          "Math 6"
+#define DEF_VALUE_ANGLE          "0.0"
+#define DEF_WIDTH               "0"
 
 typedef enum ScaleParts {
     PICK_NONE,
@@ -323,8 +390,7 @@ typedef struct _Scale {
                                          * widget. */
     Tcl_Command cmdToken;               /* Token for widget's command. */
     unsigned int flags;                 /* For bitfield definitions, see
-                                         * below */
-
+                                         * above. */
     int inset;                          /* Total width of all borders,
                                          * including traversal highlight
                                          * and 3-D border.  Indicates how
@@ -340,28 +406,30 @@ typedef struct _Scale {
                                          * interval. */
     double reqInnerRight;               /* User set maximum value for inner
                                          * internal. */
-    int tickLineWidth;                  /* Width of tick lines.  If zero,
+    int tickLineWidth;                  /* Width of the lines representing
+                                         * major and minor ticks.  If zero,
                                          * then no ticks are drawn. */
-    int axisLineWidth;                  /* Width of axis line. If zero,
+    int axisLineWidth;                  /* Width of the axis line. If zero,
                                          * then no axis line is drawn. */
     int tickLength;                     /* Length of major ticks in
                                          * pixels. Minor ticks are 2/3 of
                                          * this value. */
-    int arrowWidth, arrowHeight;
-
+    int arrowWidth, arrowHeight;        /* Dimension of min and max arrows
+                                         * (unrotated). */
     AxisRange tickRange;                /* Smallest and largest major tick
                                          * values for the scale.  The tick
                                          * values lie outside the range of
                                          * data values.  This is used to
                                          * for "loose" mode. */
-    AxisScale scale;                    /* How to scale the scale: linear,
-                                         * logrithmic, or time. */
-    
+    AxisScale scale;                    /* Specifies how to scale the
+                                         * scale: linear, logrithmic, or
+                                         * time. */
     Tcl_Obj *fmtCmdObjPtr;              /* Specifies a TCL command, to be
                                          * invoked by the scale whenever it
                                          * has to generate tick labels. */
-    Tcl_Obj *varNameObjPtr;
-
+    Tcl_Obj *varNameObjPtr;             /* Name of TCL variable to be
+                                         * updated when the current value
+                                         * changes. */
     double min, max;                    /* The actual scale range. */
     double reqMin, reqMax;              /* Requested scale bounds. Consult
                                          * the scalePtr->flags field for
@@ -374,6 +442,7 @@ typedef struct _Scale {
 
     Blt_BindTable bindTable;            /* Scale binding information */
     Blt_Painter painter;
+    Tk_Cursor cursor;                   /* X Cursor */
 
     double mark;                        /* Current value in the interval. */
     double resolution;
@@ -403,15 +472,13 @@ typedef struct _Scale {
                                          * tick label should be offset to
                                          * sit in the middle of the next
                                          * interval. */
-
-    int x1, y1, x2, y2;                 /* Location of axis. */
-
+    int x1, y1, x2, y2;                 /* Location of axis (rectangle). */
     XSegment *tickSegments;             /* Array of line segments
                                          * representing the major and minor
                                          * ticks. */
     int numSegments;                    /* # of segments in the above
                                          * array. */
-    Blt_Chain tickLabels;               /* Contains major tick label
+    Blt_Chain tickLabels;               /* List containing major tick label
                                          * strings and their offsets along
                                          * the axis. */
     short int width, height;            /* Extents of axis */
@@ -419,11 +486,14 @@ typedef struct _Scale {
                                          * of all ticks labels. */ 
     short int maxTickLabelHeight;       /* Maximum (possibly rotated)
                                          * height of all tick labels. */
-
-    int borderWidth;
-    int relief;
-    int activeRelief;
-
+    int borderWidth;                    /* Width of the 3D border around
+                                         * the scale. */
+    int relief;                         /* Normal relief of the outer
+                                         * border around the scale
+                                         * window. */
+    int activeRelief;                   /* Relief of the outer border
+                                         * around the scale window when the
+                                         * scale is active. */
     int highlightWidth;                 /* Width in pixels of highlight to
                                          * draw around widget when it has
                                          * the focus.  <= 0 means don't
@@ -434,37 +504,48 @@ typedef struct _Scale {
     XColor *highlightColor;             /* Color for drawing traversal
                                          * highlight. */
 
-    Blt_Bg normalBg;                    /* Normal background color. */
-    Blt_Bg activeBg;                    /* Active background color. */
-    Blt_Bg disabledBg;                  /* Disabled background color. */
+    Blt_Bg normalBg;                    /* Normal background color of the
+                                         * scale. */
+    Blt_Bg activeBg;                    /* Active background color of the 
+                                         * scale. */
+    Blt_Bg disabledBg;                  /* Disabled background color of the
+                                         * scale and its parts. */
 
-    XColor *disabledFgColor;
+    XColor *disabledFgColor;            /* Disabled foreground color of the
+                                         * scale parts. */
+    Blt_Bg normalGripBg;                /* Normal background color of the
+                                         * grip. */
+    Blt_Bg activeGripBg;                /* Active background color of the
+                                         * grip. */
+    /* There's no normalValueBg since it's transparent. */
+    Blt_Bg activeValueBg;               /* Background color of the value
+                                         * (rectangle) when it is
+                                         * active. */
+    XColor *activeValueFgColor;         /* Text color of the value when its
+                                         * active. */
+    XColor *normalValueFgColor;         /* Normal text color of the value. */
 
-    Blt_Bg normalGripBg;
-    Blt_Bg activeGripBg;
-    XColor *activeGripFgColor;
-    XColor *normalGripFgColor;
-
-    Blt_Pixel normalMinArrowColor;
-    Blt_Pixel normalMaxArrowColor;
-    Blt_Pixel activeMinArrowColor;
-    Blt_Pixel activeMaxArrowColor;
-    Blt_Pixel markColor;
+    /* The arrow and mark colors are Blt_Pixels so that they can specify
+     * opacity. */
+    Blt_Pixel normalMinArrowColor;      /* Normal color of min arrow. */
+    Blt_Pixel normalMaxArrowColor;      /* Normal color of max arrow. */
+    Blt_Pixel activeMinArrowColor;      /* Active color of min arrow. */
+    Blt_Pixel activeMaxArrowColor;      /* Active color of max arrow. */
+    Blt_Pixel markColor;                /* Color of mark line. */
 
     XColor *tickLabelColor;
     XColor *tickColor;
     XColor *axisLineColor;
     XColor *rangeColor;
-    XColor *valueColor;
     XColor *titleColor;
 
-    int markWidth;
+    int markWidth;                      /* Width of the mark (unrotated). */
+    Blt_Font tickFont;                  /* Font for the tick numbers. */
+    Blt_Font titleFont;                 /* Font for the scale's title. */
+    Blt_Font valueFont;                 /* Font for the current value. */
+    Blt_Font tickLabelFont;             /* Font for the tick label. */
 
-    Blt_Font tickFont;
-    Blt_Font titleFont;
-    Blt_Font valueFont;
-    Blt_Font tickLabelFont;
-
+    /* Arrows are cached as pictures (both arrows in each state). */
     Blt_Picture activeMaxArrow;
     Blt_Picture normalMaxArrow;
     Blt_Picture disabledMaxArrow;
@@ -472,20 +553,25 @@ typedef struct _Scale {
     Blt_Picture normalMinArrow;
     Blt_Picture disabledMinArrow;
 
-    TickLabel *valuePtr;
-    float valueAngle;    
-    float tickAngle;    
-    Tk_Anchor tickAnchor;
+    TickLabel *valuePtr;                /* Formatted label of the current
+                                         * value. */
+    float valueAngle;                   /* Angle in degrees to rotate the
+                                         * current value number. */
+    float tickAngle;                    /* Angle in degrees to rotate the
+                                         * tick labels. */
+    Tk_Anchor tickAnchor;               /* Anchor for the ticks. */
     Tk_Anchor reqTickAnchor;
 
-    GC disabledGC;
-
+    GC disabledGC;                      /* Graphics context for disabled
+                                         * scale axis line and text. */
+    GC disabledTickGC;                  /* Graphics context for disabled
+                                         * tick lines. */
     GC tickGC;                          /* Graphics context for axis and
                                          * tick labels */
-    GC axisLineGC;                      /* For the axis line. */
-    GC rangeGC;                         /* For the inner interval line. */
-    GC drawGC;
-    GC disabledTickGC;
+    GC axisLineGC;                      /* Graphics context for the axis
+                                         * (rectangle). */
+    GC rangeGC;                         /* Graphics context for the range
+                                         * line. */
 
     const char *units;                  /* Units. Displayed with the
                                          * value.  */
@@ -494,14 +580,14 @@ typedef struct _Scale {
                                          * the scale. */
     int titleX, titleY;                 /* Position of the title. */
     int titleWidth, titleHeight;        /* Dimension of the title. */
-    Tk_Anchor titleAnchor;
+    Tk_Anchor titleAnchor;              
     Tk_Justify titleJustify;
     
-    int markDashOffset;
-
-    int gripWidth, gripHeight;
-    int gripBorderWidth;
-    int gripRelief;
+    int gripWidth, gripHeight;          /* Dimension of the grip
+                                         * (unrotated). This includes its
+                                         * borderwidth. */
+    int gripBorderWidth;                /* Borderwidth of the grip. */
+    int gripRelief;                     /* 3D relief of the grip. */
 
     double screenScale;
     Blt_Palette palette;
@@ -521,68 +607,6 @@ static double logTable[] = {
     0.954242509439325,                  /* 8 */
 };
 
-#define DEF_ACTIVE_BG           STD_ACTIVE_BACKGROUND
-#define DEF_ACTIVE_FG           STD_ACTIVE_FOREGROUND
-#define DEF_ACTIVE_GRIP_BG      STD_ACTIVE_BACKGROUND
-#define DEF_ACTIVE_GRIP_FG      STD_ACTIVE_FOREGROUND
-#define DEF_ACTIVE_MAXARROW_COLOR RGB_BLUE
-#define DEF_ACTIVE_MINARROW_COLOR RGB_RED
-#define DEF_ACTIVE_RELIEF       "raised"
-#define DEF_AXISLINE_COLOR      RGB_GREY30
-#define DEF_AXISLINE_WIDTH      "0.03i"
-#define DEF_BORDERWIDTH         "0"
-#define DEF_CHECKLIMITS         "0"
-#define DEF_COLORBAR_THICKNESS  "0.15i"
-#define DEF_COMMAND             (char *)NULL
-#define DEF_DECREASING          "0"
-#define DEF_DISABLED_BG         STD_DISABLED_BACKGROUND
-#define DEF_DISABLED_FG         STD_DISABLED_FOREGROUND
-#define DEF_DIVISIONS           "10"
-#define DEF_FORMAT_COMMAND      (char *)NULL
-#define DEF_GRIP_BG             STD_NORMAL_BACKGROUND
-#define DEF_GRIP_RELIEF         "raised"
-#define DEF_GRIP_BORDERWIDTH    "1"
-#define DEF_HIDE                ""
-#define DEF_HEIGHT              "0"
-#define DEF_LOOSE               "0"
-#define DEF_MARK_COLOR          "0x80808080"
-#define DEF_MARK_THICKNESS      "0.01i"
-#define DEF_MAX                 "10.0"
-#define DEF_MIN                 "1.0"
-#define DEF_NORMAL_BG          STD_NORMAL_BACKGROUND
-#define DEF_NORMAL_FG          RGB_BLACK
-#define DEF_NORMAL_GRIP_BG      STD_NORMAL_BACKGROUND
-#define DEF_NORMAL_GRIP_FG      STD_NORMAL_FORERGOUND
-#define DEF_NORMAL_MAXARROW_COLOR "0x800000FF"
-#define DEF_NORMAL_MINARROW_COLOR "0x80FF0000"
-#define DEF_ORIENT              "horizontal"
-#define DEF_PALETTE             (char *)NULL
-#define DEF_RANGE_COLOR         RGB_WHITE
-#define DEF_RELIEF              "flat"
-#define DEF_SCALE               "linear"
-#define DEF_SHOW                "all"
-#define DEF_STATE               "normal"
-#define DEF_RESOLUTION          "0.0"
-#define DEF_STEPSIZE            "0.0"
-#define DEF_SUBDIVISIONS        "2"
-#define DEF_TAGS                "all"
-#define DEF_TICK_ANCHOR         "c"
-#define DEF_TICK_ANGLE          "0.0"
-#define DEF_TICK_COLOR          RGB_BLACK
-#define DEF_TICK_DIRECTION      "out"
-#define DEF_TICK_FONT           STD_FONT_NUMBERS
-#define DEF_TICK_LABEL_COLOR    RGB_BLACK
-#define DEF_TICK_LENGTH         "4"
-#define DEF_TICK_LINEWIDTH      "1"
-#define DEF_TITLE               (char *)NULL
-#define DEF_TITLE_COLOR         RGB_BLACK
-#define DEF_TITLE_FONT          STD_FONT_NORMAL
-#define DEF_TITLE_JUSTIFY       "c"
-#define DEF_UNITS               (char *)NULL
-#define DEF_VALUE_COLOR          RGB_BLACK
-#define DEF_VALUE_FONT          "Math 6"
-#define DEF_VALUE_ANGLE          "0.0"
-#define DEF_WIDTH               "0"
 
 static Blt_OptionParseProc ObjToLimit;
 static Blt_OptionPrintProc LimitToObj;
@@ -651,6 +675,12 @@ static Blt_ConfigSpec configSpecs[] =
     {BLT_CONFIG_RELIEF, "-activerelief", "activeRelief", "Relief",
         DEF_ACTIVE_RELIEF, Blt_Offset(Scale, activeRelief),
         BLT_CONFIG_DONT_SET_DEFAULT}, 
+    {BLT_CONFIG_BACKGROUND, "-activevaluebackground", "activeValueBackground", 
+        "ActiveValueBackground", DEF_ACTIVE_VALUE_BG,  
+        Blt_Offset(Scale, activeValueBg), 0}, 
+    {BLT_CONFIG_COLOR, "-activevalueforeground", "activeValueForeground", 
+        "ActiveValueForeground", DEF_ACTIVE_VALUE_FG,  
+        Blt_Offset(Scale, activeValueFgColor), 0}, 
     {BLT_CONFIG_COLOR, "-axislinecolor", "axisLineColor", "AxisLineColor", 
         DEF_AXISLINE_COLOR,  Blt_Offset(Scale, axisLineColor), 0}, 
     {BLT_CONFIG_PIXELS_NNEG, "-axislinewidth", "axisLineWidth", "AxisLineWidth",
@@ -666,9 +696,8 @@ static Blt_ConfigSpec configSpecs[] =
     {BLT_CONFIG_PIXELS_NNEG, "-colorbarthickness", "colorBarThickness", 
         "ColorBarThickness", DEF_COLORBAR_THICKNESS, 
         Blt_Offset(Scale, colorbar.thickness), 0},
-    {BLT_CONFIG_OBJ, "-formatcommand", "formatCommand", "FormatCommand", 
-        DEF_FORMAT_COMMAND, Blt_Offset(Scale, fmtCmdObjPtr), 
-        BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_ACTIVE_CURSOR, "-cursor", "cursor", "Cursor",
+        DEF_CURSOR, Blt_Offset(Scale, cursor), BLT_CONFIG_NULL_OK},
     {BLT_CONFIG_BITMASK, "-decreasing", "decreasing", "Decreasing",
         DEF_DECREASING, Blt_Offset(Scale, flags),
         BLT_CONFIG_DONT_SET_DEFAULT, (Blt_CustomOption *)DECREASING},
@@ -683,6 +712,9 @@ static Blt_ConfigSpec configSpecs[] =
         Blt_Offset(Scale, reqNumMajorTicks), BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_SYNONYM, "-fg", "color"},
     {BLT_CONFIG_SYNONYM, "-foreground", "color"},
+    {BLT_CONFIG_OBJ, "-formatcommand", "formatCommand", "FormatCommand", 
+        DEF_FORMAT_COMMAND, Blt_Offset(Scale, fmtCmdObjPtr), 
+        BLT_CONFIG_NULL_OK},
     {BLT_CONFIG_BACKGROUND, "-gripbackground", "gripBackground",
        "GripBackground", DEF_GRIP_BG, Blt_Offset(Scale, normalGripBg), 0},
     {BLT_CONFIG_PIXELS_NNEG, "-gripborderwidth", "gripBorderWidth",
@@ -787,15 +819,28 @@ static Blt_ConfigSpec configSpecs[] =
         BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_STRING, "-units", "units", "Units", DEF_UNITS,
         Blt_Offset(Scale, units), BLT_CONFIG_NULL_OK},
-    {BLT_CONFIG_FLOAT, "-valueangle", "valueAngle", "ValueAngle", DEF_VALUE_ANGLE,
-        Blt_Offset(Scale, valueAngle), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_FLOAT, "-valueangle", "valueAngle", "ValueAngle", 
+        DEF_VALUE_ANGLE, Blt_Offset(Scale, valueAngle), 
+        BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_FONT, "-valuefont", "valueFont", "ValueFont",
         DEF_VALUE_FONT, Blt_Offset(Scale, valueFont), 0},
     {BLT_CONFIG_COLOR, "-valuecolor", "valueColor", "ValueColor", 
-        DEF_VALUE_COLOR,  Blt_Offset(Scale, valueColor), 0}, 
+        DEF_NORMAL_VALUE_COLOR,  Blt_Offset(Scale, normalValueFgColor), 0}, 
     {BLT_CONFIG_PIXELS_NNEG, "-width", "width", "Width", DEF_WIDTH, 
         Blt_Offset(Scale, reqWidth), 0},
     {BLT_CONFIG_END, NULL, NULL, NULL, NULL, 0, 0}
+};
+
+typedef struct {
+    unsigned int flags;
+} BBoxSwitches;
+
+#define BBOX_ROOT     (1<<0)
+static Blt_SwitchSpec bboxSwitches[] = 
+{
+    {BLT_SWITCH_BITS_NOARG, "-root", "", (char *)NULL,
+        Blt_Offset(BBoxSwitches, flags), 0, BBOX_ROOT},
+    {BLT_SWITCH_END}
 };
 
 typedef struct {
@@ -1716,7 +1761,7 @@ FreeTickLabels(Blt_Chain chain)
  * -------------------------------------------------------------------------- 
  */
 static TickLabel *
-MakeLabel(Scale *scalePtr, double value)
+MakeLabel(Scale *scalePtr, double value, const char *units)
 {
 #define TICK_LABEL_SIZE         200
     char buffer[TICK_LABEL_SIZE + 1];
@@ -1725,6 +1770,9 @@ MakeLabel(Scale *scalePtr, double value)
     Tcl_DString ds;
     int length;
 
+    if (units == NULL) {
+        units = "";
+    }
     string = NULL;
     Tcl_DStringInit(&ds);
     if (scalePtr->fmtCmdObjPtr != NULL) {
@@ -1751,7 +1799,13 @@ MakeLabel(Scale *scalePtr, double value)
         string = Tcl_GetStringFromObj(Tcl_GetObjResult(scalePtr->interp), 
                                       &length);
     } else if (IsLogScale(scalePtr)) {
-        length = Blt_FmtString(buffer, TICK_LABEL_SIZE, "1E%d", ROUND(value));
+        if (units != NULL) {
+            length = Blt_FmtString(buffer, TICK_LABEL_SIZE, "%1E%d %s", 
+                ROUND(value), units);
+        } else {
+            length = Blt_FmtString(buffer, TICK_LABEL_SIZE, "1E%d", 
+                ROUND(value));
+        }
         string = buffer;
     } else if ((IsTimeScale(scalePtr)) && (scalePtr->major.fmt != NULL)) {
         Blt_DateTime date;
@@ -1766,8 +1820,13 @@ MakeLabel(Scale *scalePtr, double value)
             value = fmod(value, 60.0);
             value = UROUND(value, scalePtr->major.step);
         }
-        length = Blt_FmtString(buffer, TICK_LABEL_SIZE, "%.*G", NUMDIGITS, 
-                               value);
+        if (units != NULL) {
+            length = Blt_FmtString(buffer, TICK_LABEL_SIZE, "%.*G %s", 
+                NUMDIGITS, value, units);
+        } else {
+            length = Blt_FmtString(buffer, TICK_LABEL_SIZE, "%.*G", 
+                NUMDIGITS, value);
+        }
         string = buffer;
     }
     labelPtr = Blt_AssertMalloc(sizeof(TickLabel) + length);
@@ -3326,7 +3385,7 @@ GetAxisGeometry(Scale *scalePtr)
         if (!InRange(mid, &scalePtr->tickRange)) {
             continue;
         }
-        labelPtr = MakeLabel(scalePtr, left.value);
+        labelPtr = MakeLabel(scalePtr, left.value, NULL);
         Blt_Chain_Append(scalePtr->tickLabels, labelPtr);
         /* 
          * Get the dimensions of each tick label.  Remember tick labels
@@ -3712,8 +3771,8 @@ IdentifyHorizontalPart(Scale *scalePtr, int sx, int sy)
     if ((scalePtr->flags & (ACTIVE|SHOW_VALUE)) == (ACTIVE|SHOW_VALUE)) {
         if ((sx >= scalePtr->valuePtr->x) && 
             (sy >= scalePtr->valuePtr->y) && 
-            (sx < (scalePtr->valuePtr->x + scalePtr->valuePtr->width)) && 
-            (sy < (scalePtr->valuePtr->y + scalePtr->valuePtr->height))) {
+            (sx <= (scalePtr->valuePtr->x + scalePtr->valuePtr->width)) && 
+            (sy <= (scalePtr->valuePtr->y + scalePtr->valuePtr->height))) {
             return PICK_VALUE;
         }
     }
@@ -4321,11 +4380,12 @@ MapHorizontalScale(Scale *scalePtr)
         scalePtr->colorbar.width = ABS(x2 - x1) + 1;
     }
     y += PADY + scalePtr->inset;
+    /* Value */
     if (scalePtr->flags & SHOW_VALUE) {
         TickLabel *labelPtr;
         int x;
         
-        labelPtr = MakeLabel(scalePtr, scalePtr->mark);
+        labelPtr = MakeLabel(scalePtr, scalePtr->mark, scalePtr->units);
         Blt_GetTextExtents(scalePtr->valueFont, 0, labelPtr->string, -1, 
                            &labelPtr->width, &labelPtr->height);
         if (scalePtr->valueAngle != 0.0f) {
@@ -4336,6 +4396,8 @@ MapHorizontalScale(Scale *scalePtr)
                                scalePtr->valueAngle, &rlw, &rlh, NULL);
             labelPtr->width = ROUND(rlw), labelPtr->height = ROUND(rlh);
         }
+        labelPtr->width += 4;
+        labelPtr->height += 4;
         x = HMap(scalePtr, scalePtr->mark);
         if (x > (scalePtr->x2 - labelPtr->width - scalePtr->arrowWidth)) {
             x -= scalePtr->gripWidth + labelPtr->width;
@@ -4431,7 +4493,7 @@ MapVerticalScale(Scale *scalePtr)
         TickLabel *labelPtr;
         int y;
         
-        labelPtr = MakeLabel(scalePtr, scalePtr->mark);
+        labelPtr = MakeLabel(scalePtr, scalePtr->mark, scalePtr->units);
         Blt_GetTextExtents(scalePtr->valueFont, 0, labelPtr->string, -1, 
                            &labelPtr->width, &labelPtr->height);
         if (scalePtr->valueAngle != 0.0f) {
@@ -4442,6 +4504,8 @@ MapVerticalScale(Scale *scalePtr)
                                scalePtr->valueAngle, &rlw, &rlh, NULL);
             labelPtr->width = ROUND(rlw), labelPtr->height = ROUND(rlh);
         }
+        labelPtr->width += 4;
+        labelPtr->height += 4;
         y = VMap(scalePtr, scalePtr->mark);
         if (y < (scalePtr->y1 + labelPtr->height + scalePtr->arrowHeight)) {
             y += scalePtr->gripWidth;
@@ -4863,8 +4927,17 @@ DrawScale(Scale *scalePtr, Drawable drawable)
         Blt_Ts_InitStyle(ts);
         Blt_Ts_SetAngle(ts, scalePtr->valueAngle);
         Blt_Ts_SetFont(ts, scalePtr->valueFont);
-        Blt_Ts_SetPadding(ts, 1, 2, 0, 0);
-        Blt_Ts_SetForeground(ts, scalePtr->valueColor);
+        Blt_Ts_SetPadding(ts, 2, 2, 2, 2);
+        if (scalePtr->flags & ACTIVE_VALUE) {
+            Blt_Bg_FillRectangle(scalePtr->tkwin, drawable, 
+                scalePtr->activeValueBg, scalePtr->valuePtr->x, 
+                scalePtr->valuePtr->y, 
+                scalePtr->valuePtr->width, scalePtr->valuePtr->height, 
+                0, TK_RELIEF_FLAT);
+            Blt_Ts_SetForeground(ts, scalePtr->activeValueFgColor);
+        } else {
+            Blt_Ts_SetForeground(ts, scalePtr->normalValueFgColor);
+        }
         Blt_Ts_SetMaxLength(ts, scalePtr->width - 2 * scalePtr->inset);
         if (HORIZONTAL(scalePtr)) {
             Blt_Ts_DrawText(scalePtr->tkwin, drawable,
@@ -4976,7 +5049,7 @@ DisplayProc(ClientData clientData)
  *      Scale will be redrawn to reflect the new axis attributes.
  *
  *	pathName activate min/max/grip
- *	pathName deactivate min/max/grip 
+ *	pathName deactivate min/max/grip/value
  *
  *---------------------------------------------------------------------------
  */
@@ -5002,11 +5075,16 @@ ActivateOp(ClientData clientData, Tcl_Interp *interp, int objc,
         flag = ACTIVE_MAXARROW;
     } else if ((c == 'g') && (strncmp(string, "grip", length) == 0)) {
         flag = ACTIVE_GRIP;
+    } else if ((c == 'v') && (strncmp(string, "value", length) == 0)) {
+        flag = ACTIVE_VALUE;
     } else {
         Tcl_AppendResult(interp, "unknown scale part \"", string, 
-                         "\": should be axis, colorbar, grip, mark, maxarrow, "
-                         "minarrow, or title.", (char *)NULL);
+                "\": should be grip, maxarrow, minarrow, or value.", 
+                (char *)NULL);
         return TCL_ERROR;
+    }
+    if (scalePtr->flags & DISABLED) {
+        return TCL_OK;
     }
     if (activate) {
         scalePtr->flags |= flag;
@@ -5020,7 +5098,7 @@ ActivateOp(ClientData clientData, Tcl_Interp *interp, int objc,
 /*
  *---------------------------------------------------------------------------
  *
- * BBoxOp --
+ * BboxOp --
  *
  *    Returns the name of the picked axis (using the axis bind operation).
  *    Right now, the only name accepted is "current".
@@ -5029,13 +5107,13 @@ ActivateOp(ClientData clientData, Tcl_Interp *interp, int objc,
  *    A standard TCL result.  The interpreter result will contain the name of
  *    the axis.
  *
- *      pathName bbox min|max|mark|rmin|rmax|
+ *      pathName bbox min|max|mark|rmin|rmax| ?switches?
  *
  *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 static int
-BBoxOp(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
+BboxOp(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 {
     Scale *scalePtr = clientData;
     Tcl_Obj *listObjPtr;
@@ -5044,7 +5122,8 @@ BBoxOp(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv
     double value;
     int length;
     int x1, y1, x2, y2;
-    
+    BBoxSwitches switches;
+
     string = Tcl_GetStringFromObj(objv[2], &length);
     c = string[0];
     x1 = y1 = x2 = y2 = 0;
@@ -5071,6 +5150,18 @@ BBoxOp(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv
                          "\": should be max, min, rmin, rmax, or mark.", 
                          (char *)NULL);
         return TCL_ERROR;
+    }
+    memset(&switches, 0, sizeof(switches));
+    if (Blt_ParseSwitches(interp, bboxSwitches, objc - 3, objv + 3, 
+        &switches, BLT_SWITCH_DEFAULTS) < 0) {
+        return TCL_ERROR;
+    }
+    if (switches.flags & BBOX_ROOT) {
+        int rootX, rootY;
+        
+        Tk_GetRootCoords(scalePtr->tkwin, &rootX, &rootY);
+        x1 += rootX, y1 += rootY;
+        x2 += rootX, y2 += rootY;
     }
     listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **)NULL);
     Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewIntObj(x1));
@@ -5434,6 +5525,9 @@ SetOp(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
     if (Blt_GetDoubleFromObj(interp, objv[2], &mark) != TCL_OK) {
         return TCL_ERROR;
     }
+    if (scalePtr->flags & DISABLED) {
+        return TCL_OK;
+    }
     /* If there's a resolution set, round to the nearest unit.  */
     if (scalePtr->resolution > 0.0) {
         mark = UROUND(mark, scalePtr->resolution);
@@ -5451,7 +5545,7 @@ SetOp(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 
 static Blt_OpSpec scaleOps[] = {
     {"activate",     1, ActivateOp,     3, 3, "part"},
-    {"bbox",         2, BBoxOp,         3, 3, "part"},
+    {"bbox",         2, BboxOp,         3, 0, "part ?switches?"},
     {"bind",         2, BindOp,         2, 5, "sequence command"},
     {"cget",         2, CgetOp,         3, 3, "option"},
     {"configure",    2, ConfigureOp,    2, 0, "?option value?..."},

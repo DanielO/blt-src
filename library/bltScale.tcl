@@ -44,6 +44,8 @@ namespace eval blt {
     namespace eval Scale {
 	variable _private
 	array set _private {
+            editor ""
+            focus ""
 	}
     }
 }
@@ -147,6 +149,74 @@ proc blt::Scale::Init { w } {
     }
     $w bind maxarrow <B1-Motion> {
         %W configure -rangemax [%W invtransform %x %y]
+    }
+    $w bind value <Enter> {
+        %W activate value
+    }
+    $w bind value <Leave> {
+        %W deactivate value
+    }
+    $w bind value <ButtonPress-1> {
+        blt::Scale::PostEditor %W
+    }    
+    $w bind value <ButtonRelease-1> { 
+        blt::Scale::UnpostEditor %W 
+    }
+}
+
+#
+# ImportFromEditor --
+#
+#   This is called whenever a editor text changes (via the -command
+#   callback from the invoke operation of the editor).  Gets the edited
+#   text from the editor and sets the corresponding table cell to it.
+#
+proc blt::Scale::ImportFromEditor { w what value } {
+    $w set $value
+}
+
+#
+# PostEditor --
+#
+#   Posts the editor at the location of the scale requesting it.  The
+#   editor is initialized to the current value and we bind to the editor's
+#   <<Value>> event to know if the text was edited.
+#
+#   The most important part is that we set a grab on the editor.  This will
+#   force <ButtonRelease> events to be interpreted by the editor instead of
+#   the scale widget.
+#
+proc blt::Scale::PostEditor { w } {
+    if { ![winfo exists $w.editor] } {
+	blt::comboeditor $w.editor -exportselection yes
+    }
+    foreach { x1 y1 x2 y2 } [$w bbox value -root] break
+    $w.editor post -align right -box [list $x1 $y1 $x2 $y2] \
+        -command [list blt::Scale::ImportFromEditor $w value] \
+        -text [$w get mark]
+    blt::grab push $w.editor
+    set _private(focus) [focus]
+    focus -force $w.editor
+    bind $w.editor <Unmap> [list blt::Scale::UnpostEditor $w]
+}
+
+#
+# UnpostEditor --
+#
+#   Unposts the editor.  Note that the current value isn't set here.  This
+#   is done via -command callback.  We don't know if we're unposting the
+#   editor because the text was changed or if the user clicked outside of
+#   the editor to cancel the operation.
+#
+proc ::blt::Scale::UnpostEditor { w } {
+    variable _private
+
+    catch { focus $_private(focus) }
+    # Release grab, if any, and restore the previous grab, if there was
+    # one.
+    set grab [blt::grab current]
+    if { $grab != "" } {
+        blt::grab pop $grab
     }
 }
 

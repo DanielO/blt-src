@@ -17,11 +17,4 @@ blt::scale .s -orient vertical \
 blt::table . \
     0,0 .s -fill both
 
-.s bind value <Enter> {
-    puts stderr "entered value"
-}
-.s bind value <Leave> {
-    puts stderr "left value"
-}
-
 focus .s

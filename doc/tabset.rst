@@ -181,12 +181,15 @@ available for *tabset* widgets:
   tab option(s) to have the given value(s). *Option* and *value* are
   described in the **configure** operation below.
 
-*pathName* **bbox** *tabName*
+*pathName* **bbox** *tabName*  ?\ *switches* ... ?
   Returns the bounding box of *tabName*.  *TabName* may be an index, tag,
   name, or label but may not refer to more than one tab.  This command
   returns a list of 4 numbers that represent the coordinates of the
-  upper-left and lower-right corners of the bounding box of the tab (but
-  not its folder) in root coordinates.
+  upper-left and lower-right corners of the bounding box of the tab.
+  By default the coordinates are relative to the tabset widget.
+
+  **-root**
+    Return the position of the tab in root coordinates.
 
 *pathName* **bind** *tagName* ?\ *sequence*\ ? ?\ *cmdString*\ ?
   Associates *cmdString* with *tagName* such that whenever the event

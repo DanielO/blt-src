@@ -1028,6 +1028,18 @@ static Blt_ConfigSpec styleConfigSpecs[] = {
 
 typedef struct {
     unsigned int flags;
+} BBoxSwitches;
+
+#define BBOX_ROOT     (1<<0)
+static Blt_SwitchSpec bboxSwitches[] = 
+{
+    {BLT_SWITCH_BITS_NOARG, "-root", "", (char *)NULL,
+        Blt_Offset(BBoxSwitches, flags), 0, BBOX_ROOT},
+    {BLT_SWITCH_END}
+};
+
+typedef struct {
+    unsigned int flags;
 } IdentifySwitches;
 
 #define IDENTIFY_ROOT     (1<<0)
@@ -5132,6 +5144,7 @@ AddOp(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
  *
  *      Returns the bounding box of the tab in root coordinates.  
  *
+ *      pathName bbox tabName ?switches?
  *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
@@ -5141,6 +5154,8 @@ BboxOp(ClientData clientData, Tcl_Interp *interp, int objc,
 {
     Tabset *setPtr = clientData; 
     Tab *tabPtr;
+    int x1, y1, x2, y2;
+    BBoxSwitches switches;
 
     if (GetTabFromObj(interp, setPtr, objv[2], &tabPtr) != TCL_OK) {
         return TCL_ERROR;
@@ -5151,20 +5166,30 @@ BboxOp(ClientData clientData, Tcl_Interp *interp, int objc,
                 "\"", (char *)NULL);
         return TCL_ERROR;
     }
-    if (tabPtr->flags & VISIBLE) {
-        Tcl_Obj *listObjPtr, *objPtr;
+    memset(&switches, 0, sizeof(switches));
+    if (Blt_ParseSwitches(interp, bboxSwitches, objc - 3, objv + 3, 
+        &switches, BLT_SWITCH_DEFAULTS) < 0) {
+        return TCL_ERROR;
+    }
+    x1 = tabPtr->screenX;
+    y1 = tabPtr->screenY;
+    x2 = tabPtr->screenX + tabPtr->screenWidth;
+    y2 = tabPtr->screenY + tabPtr->screenHeight;
+    if (switches.flags & BBOX_ROOT) {
         int rootX, rootY;
         
-        listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **)NULL);
         Tk_GetRootCoords(setPtr->tkwin, &rootX, &rootY);
-        objPtr = Tcl_NewIntObj(tabPtr->screenX + rootX);
-        Tcl_ListObjAppendElement(interp, listObjPtr, objPtr);
-        objPtr = Tcl_NewIntObj(tabPtr->screenY + rootY);
-        Tcl_ListObjAppendElement(interp, listObjPtr, objPtr);
-        objPtr = Tcl_NewIntObj(tabPtr->screenX + rootX + tabPtr->screenWidth);
-        Tcl_ListObjAppendElement(interp, listObjPtr, objPtr);
-        objPtr = Tcl_NewIntObj(tabPtr->screenY + rootY + tabPtr->screenHeight);
-        Tcl_ListObjAppendElement(interp, listObjPtr, objPtr);
+        x1 += rootX, y1 += rootY;
+        x2 += rootX, y2 += rootY;
+    }
+    if (tabPtr->flags & VISIBLE) {
+        Tcl_Obj *listObjPtr, *objPtr;
+        
+        listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **)NULL);
+        Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewIntObj(x1));
+        Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewIntObj(y1));
+        Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewIntObj(x2));
+        Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewIntObj(y2));
         Tcl_SetObjResult(interp, listObjPtr);
     }
     return TCL_OK;
@@ -9502,7 +9527,7 @@ static Blt_OpSpec tabsetOps[] =
 {
     {"activate",    2, ActivateOp,    3, 3, "tabName",},
     {"add",         2, AddOp,         2, 0, "?label? ?option-value..?",},
-    {"bbox",        2, BboxOp,        3, 3, "tabName",},
+    {"bbox",        2, BboxOp,        3, 0, "tabName ?switches?",},
     {"bind",        2, BindOp,        3, 5, "tabName ?sequence command?",},
     {"cget",        2, CgetOp,        3, 3, "option",},
     {"configure",   2, ConfigureOp,   2, 0, "?option value?...",},

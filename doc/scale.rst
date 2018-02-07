@@ -40,6 +40,33 @@ The normal size of the *scale* is the computed size to display the
 text. You can specify the width and height of the *scale* window
 using the **-width** and **-height** widget options.
 
+SCALE PARTS
+-----------
+
+A scale is a widget that displays a collection of item arranged in one or
+more columns.  There exist several different types of items (specified by
+the item's **-type** option), each with different properties.  Items of
+different types may be combined in a single menu.  Parts are not
+distinct widgets; the entire *scale* is one widget.
+
+The scale is composed of the following parts: 
+
+**axis**
+
+**colorbar**
+
+**grip**
+
+**mark**
+
+**maxarrow**
+
+**minarrow**
+
+**title**
+
+**value**
+
 OPERATIONS
 ----------
 
@@ -55,8 +82,64 @@ command.  The following operations are available for *scale* widgets:
 *pathName* **activate** *partName*
   Redisplays *partName* using its active colors and relief.  This typically
   is used by widget bindings to highlight items when the pointer is moved
-  over items in the scale. 
-  *Item* may be any of the following.
+  over parts of the scale.  *PartName* must be one of the following.
+
+  **grip**
+
+  **maxarrow**
+
+  **minarrow**
+
+  **value**
+
+*pathName* **bbox** *partName*  ?\ *switches* ... ?
+  Returns the bounding box of *partName*.  *PartName* must be one of the
+  following.
+
+  **value**
+
+  This command returns a list of 4 numbers that represent the coordinates
+  of the upper-left and lower-right corners of the bounding box of the
+  part.  By default the coordinates are relative to the scale widget.
+  *Switches* may be one of the following.
+
+  **-root**
+    Return the bounding box of the part in root coordinates.
+
+*pathName* **bind** *partName* ?\ *sequence*\ ? ?\ *cmdString*\ ?
+  Associates *cmdString* with *partName* such that whenever the event
+  sequence given by *sequence* occurs for the part, *cmdString* will be
+  invoked.  The syntax is similar to the **bind** command except that it
+  operates on scale parts, rather than widgets. See the **bind** manual
+  entry for complete details on *sequence* and the substitutions performed
+  on *cmdString*.
+
+  *PartName* must be one of the following.
+
+  **axis**
+
+  **colorbar**
+
+  **grip**
+
+  **mark**
+
+  **maxarrow**
+
+  **minarrow**
+
+  **title**
+
+  **value**
+
+  If all arguments are specified then a new binding is created, replacing
+  any existing binding for the same *sequence* and *partName*.  If the first
+  character of *cmdString* is "+" then *cmdString* augments an existing
+  binding rather than replacing it.  If no *cmdString* argument is provided
+  then the command currently associated with *partName* and *sequence* (it's
+  an error occurs if there's no such binding) is returned.  If both
+  *cmdString* and *sequence* are missing then a list of all the event
+  sequences for which bindings have been defined for *partName*.
 
 *pathName* **cget** *option*  
   Returns the current value of the widget configuration option given by

@@ -361,7 +361,7 @@ proc blt::Tabset::ToggleTearoff { w index } {
     $w invoke $tab
     set win [$w tearoff $index]
     if { $win == "$w" } {
-	foreach { x1 y1 x2 y2 } [$w bbox $tab] break
+	foreach { x1 y1 x2 y2 } [$w bbox $tab -root] break
 	CreateTearoff $w $tab $x1 $y1
     } elseif { $win != "" } {
 	DestroyTearoff $w $tab
@@ -369,7 +369,7 @@ proc blt::Tabset::ToggleTearoff { w index } {
 }
 
 proc blt::Tabset::PointerOverTab { w tab x y } {
-    foreach {x1 y1 x2 y2} [$w bbox $tab] break
+    foreach {x1 y1 x2 y2} [$w bbox $tab -root] break
     if { ($x < $x1) || ($x >= $x2) || ($y < $y1) || ($y >= $y2) } {
         return 0
     } else {
