@@ -238,6 +238,14 @@ static Tk_CustomOption fontOption = {
     StringToFont, FontToString, (ClientData)0
 };
 
+static Tk_OptionParseProc StringToActualFont;
+static Tk_OptionPrintProc ActualFontToString;
+
+static Tk_CustomOption actualFontOption = {
+    StringToActualFont, ActualFontToString, (ClientData)0
+};
+
+
 static Tk_OptionParseProc StringToBrush;
 static Tk_OptionPrintProc BrushToString;
 
@@ -284,6 +292,8 @@ static Tk_ConfigSpec configSpecs[] = {
         TK_CONFIG_DONT_SET_DEFAULT, &bltDistanceOption},
     {TK_CONFIG_COLOR, (char *)"-activeoutline", "activeOutline", (char *)NULL,
         DEF_ACTIVE_OUTLINE_COLOR, Tk_Offset(LabelItem, active.fgColor)},
+    {TK_CONFIG_CUSTOM, (char *)"-actualfont", (char *)NULL, (char *)NULL,
+        (char *)NULL, 0, 0, &actualFontOption},
     {TK_CONFIG_ANCHOR, (char *)"-anchor", (char *)NULL, (char *)NULL,
         DEF_ANCHOR, Blt_Offset(LabelItem, anchor), TK_CONFIG_DONT_SET_DEFAULT},
     {TK_CONFIG_SYNONYM, (char *)"-bg", "fill"},
@@ -420,6 +430,75 @@ FontToString(ClientData clientData, Tk_Window tkwin, char *widgRec,
     string = Blt_Font_Name(font);
     *freeProcPtr = (Tcl_FreeProc *)TCL_STATIC;
     return (char *)string;
+}
+
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ActualStringToFont --
+ *
+ *      Converts string to Blt_Font structure.
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static int
+StringToActualFont(ClientData clientData,Tcl_Interp *interp, Tk_Window tkwin,
+             const char *string,  char *widgRec, int offset)
+{
+    /* Does nothing. */
+    return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ActiveFontToString --
+ *
+ *      Returns the actual information about the font.
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+#if (_TCL_VERSION >= _VERSION(8,6,0)) 
+static const char *
+#else
+static char *
+#endif
+ActualFontToString(ClientData clientData, Tk_Window tkwin, char *widgRec,
+             int offset, Tcl_FreeProc **freeProcPtr)
+{
+    LabelItem *labelPtr = (LabelItem *)(widgRec);
+    Blt_Font font;
+    const char *string;
+    Tcl_DString ds;
+    char buffer[200];
+    double size;
+
+    font = (labelPtr->scaledFont != NULL) ?
+        labelPtr->scaledFont : labelPtr->baseFont;
+    Tcl_DStringInit(&ds);
+    Tcl_DStringAppendElement(&ds, "-family");
+    Tcl_DStringAppendElement(&ds, Blt_Font_Family(font));
+    size = Blt_Font_PointSize(font);
+    sprintf(buffer, "%g", size);
+    Tcl_DStringAppendElement(&ds, "-size");
+    Tcl_DStringAppendElement(&ds, buffer);
+    Tcl_DStringAppendElement(&ds, "-overstrike");
+    Tcl_DStringAppendElement(&ds, "0");
+    Tcl_DStringAppendElement(&ds, "-slant");
+    Tcl_DStringAppendElement(&ds, Blt_Font_Slant(font));
+    Tcl_DStringAppendElement(&ds, "-underline");
+    Tcl_DStringAppendElement(&ds, "0");
+    Tcl_DStringAppendElement(&ds, "-weight");
+    Tcl_DStringAppendElement(&ds, Blt_Font_Weight(font));
+
+    *freeProcPtr = (Tcl_FreeProc *)TCL_DYNAMIC;
+    string = Tcl_Alloc(Tcl_DStringLength(&ds) + 1);
+    strcpy(string, Tcl_DStringValue(&ds));
+    Tcl_DStringFree(&ds);
+    return string;
 }
 
 /*
