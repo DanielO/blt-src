@@ -11,9 +11,17 @@ blt::scale .s -orient vertical \
     -palette bluegreen  \
     -scale time \
     -height 5i -bg $normalBg \
+    -valueangle 90 \
     -resolution 1
 
 blt::table . \
     0,0 .s -fill both
+
+.s bind value <Enter> {
+    puts stderr "entered value"
+}
+.s bind value <Leave> {
+    puts stderr "left value"
+}
 
 focus .s

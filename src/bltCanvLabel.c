@@ -469,10 +469,10 @@ static char *
 ActualFontToString(ClientData clientData, Tk_Window tkwin, char *widgRec,
              int offset, Tcl_FreeProc **freeProcPtr)
 {
-    LabelItem *labelPtr = (LabelItem *)(widgRec);
     Blt_Font font;
-    const char *string;
+    LabelItem *labelPtr = (LabelItem *)(widgRec);
     Tcl_DString ds;
+    char *string;
     char buffer[200];
     double size;
 

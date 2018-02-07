@@ -178,10 +178,12 @@ typedef enum ScaleParts {
     PICK_MAXARROW,
     PICK_MINARROW,
     PICK_TITLE,
+    PICK_VALUE,
 } ScalePart;
 
 static const char *partNames[] = {
-    "none", "axis", "colorbar", "grip", "mark", "maxarrow", "minarrow", "title"
+    "none", "axis", "colorbar", "grip", "mark", "maxarrow", "minarrow",
+    "title", "value",
 };
 
 typedef enum _AxisScales {
@@ -470,6 +472,7 @@ typedef struct _Scale {
     Blt_Picture normalMinArrow;
     Blt_Picture disabledMinArrow;
 
+    TickLabel *valuePtr;
     float valueAngle;    
     float tickAngle;    
     Tk_Anchor tickAnchor;
@@ -3705,6 +3708,15 @@ IdentifyHorizontalPart(Scale *scalePtr, int sx, int sy)
             return PICK_GRIP;
         }
     }
+    /* Value */
+    if ((scalePtr->flags & (ACTIVE|SHOW_VALUE)) == (ACTIVE|SHOW_VALUE)) {
+        if ((sx >= scalePtr->valuePtr->x) && 
+            (sy >= scalePtr->valuePtr->y) && 
+            (sx < (scalePtr->valuePtr->x + scalePtr->valuePtr->width)) && 
+            (sy < (scalePtr->valuePtr->y + scalePtr->valuePtr->height))) {
+            return PICK_VALUE;
+        }
+    }
     /* Axis line. */
     if ((sx >= scalePtr->x1) && (sy >= scalePtr->y1) &&
         (sx < scalePtr->x2) && (sy < scalePtr->y2)) {
@@ -3777,6 +3789,15 @@ IdentifyVerticalPart(Scale *scalePtr, int sx, int sy)
             (sy < (y + scalePtr->gripWidth / 2)) && 
             (sx < (x + scalePtr->gripHeight))) {
             return PICK_GRIP;
+        }
+    }
+    /* Value */
+    if ((scalePtr->flags & (ACTIVE|SHOW_VALUE)) == (ACTIVE|SHOW_VALUE)) {
+        if ((sx >= scalePtr->valuePtr->x) && 
+            (sy >= scalePtr->valuePtr->y) && 
+            (sx < (scalePtr->valuePtr->x + scalePtr->valuePtr->width)) && 
+            (sy < (scalePtr->valuePtr->y + scalePtr->valuePtr->height))) {
+            return PICK_VALUE;
         }
     }
     /* Axis line. */
@@ -4300,6 +4321,35 @@ MapHorizontalScale(Scale *scalePtr)
         scalePtr->colorbar.width = ABS(x2 - x1) + 1;
     }
     y += PADY + scalePtr->inset;
+    if (scalePtr->flags & SHOW_VALUE) {
+        TickLabel *labelPtr;
+        int x;
+        
+        labelPtr = MakeLabel(scalePtr, scalePtr->mark);
+        Blt_GetTextExtents(scalePtr->valueFont, 0, labelPtr->string, -1, 
+                           &labelPtr->width, &labelPtr->height);
+        if (scalePtr->valueAngle != 0.0f) {
+            double rlw, rlh;        /* Rotated label width and height. */
+
+            Blt_GetBoundingBox((double)labelPtr->width,
+                               (double)labelPtr->height, 
+                               scalePtr->valueAngle, &rlw, &rlh, NULL);
+            labelPtr->width = ROUND(rlw), labelPtr->height = ROUND(rlh);
+        }
+        x = HMap(scalePtr, scalePtr->mark);
+        if (x > (scalePtr->x2 - labelPtr->width - scalePtr->arrowWidth)) {
+            x -= scalePtr->gripWidth + labelPtr->width;
+        } else {
+            x += scalePtr->gripWidth;
+        }
+        labelPtr->x = x;
+        labelPtr->y = scalePtr->colorbar.y +
+            (scalePtr->colorbar.height - labelPtr->height) / 2;
+        if (scalePtr->valuePtr != NULL) {
+            Blt_Free(scalePtr->valuePtr);
+        }
+        scalePtr->valuePtr = labelPtr;
+    }
 }    
 
 /*
@@ -4377,6 +4427,35 @@ MapVerticalScale(Scale *scalePtr)
         scalePtr->colorbar.height = ABS(y2 - y1);
     }
     x += PADX + scalePtr->inset;
+    if (scalePtr->flags & SHOW_VALUE) {
+        TickLabel *labelPtr;
+        int y;
+        
+        labelPtr = MakeLabel(scalePtr, scalePtr->mark);
+        Blt_GetTextExtents(scalePtr->valueFont, 0, labelPtr->string, -1, 
+                           &labelPtr->width, &labelPtr->height);
+        if (scalePtr->valueAngle != 0.0f) {
+            double rlw, rlh;        /* Rotated label width and height. */
+
+            Blt_GetBoundingBox((double)labelPtr->width,
+                               (double)labelPtr->height, 
+                               scalePtr->valueAngle, &rlw, &rlh, NULL);
+            labelPtr->width = ROUND(rlw), labelPtr->height = ROUND(rlh);
+        }
+        y = VMap(scalePtr, scalePtr->mark);
+        if (y < (scalePtr->y1 + labelPtr->height + scalePtr->arrowHeight)) {
+            y += scalePtr->gripWidth;
+        } else {
+            y -= scalePtr->gripWidth + labelPtr->height;
+        }
+        labelPtr->y = y;
+        labelPtr->x = scalePtr->colorbar.x +
+            (scalePtr->colorbar.width - labelPtr->width) / 2;
+        if (scalePtr->valuePtr != NULL) {
+            Blt_Free(scalePtr->valuePtr);
+        }
+        scalePtr->valuePtr = labelPtr;
+    }
 }    
 
 static int
@@ -4779,57 +4858,23 @@ DrawScale(Scale *scalePtr, Drawable drawable)
         }
     }
     if ((scalePtr->flags & (ACTIVE|SHOW_VALUE)) == (ACTIVE|SHOW_VALUE)) {
-        TickLabel *labelPtr;
+        TextStyle ts;
 
-        labelPtr = MakeLabel(scalePtr, scalePtr->mark);
-        Blt_GetTextExtents(scalePtr->valueFont, 0, labelPtr->string, -1, 
-                           &labelPtr->width, &labelPtr->height);
+        Blt_Ts_InitStyle(ts);
+        Blt_Ts_SetAngle(ts, scalePtr->valueAngle);
+        Blt_Ts_SetFont(ts, scalePtr->valueFont);
+        Blt_Ts_SetPadding(ts, 1, 2, 0, 0);
+        Blt_Ts_SetForeground(ts, scalePtr->valueColor);
+        Blt_Ts_SetMaxLength(ts, scalePtr->width - 2 * scalePtr->inset);
         if (HORIZONTAL(scalePtr)) {
-            TextStyle ts;
-            int x;
-            
-            Blt_Ts_InitStyle(ts);
-            Blt_Ts_SetFont(ts, scalePtr->valueFont);
-            Blt_Ts_SetPadding(ts, 1, 2, 0, 0);
-            Blt_Ts_SetForeground(ts, scalePtr->valueColor);
-            Blt_Ts_SetMaxLength(ts, scalePtr->width - 2 * scalePtr->inset);
-            x = HMap(scalePtr, scalePtr->mark);
-            if (x > (scalePtr->x2 - labelPtr->width - scalePtr->arrowWidth)) {
-                Blt_Ts_SetAnchor(ts, TK_ANCHOR_E);
-                
-                Blt_Ts_DrawText(scalePtr->tkwin, drawable, labelPtr->string, -1,
-                                &ts, x - scalePtr->gripWidth,
-                    scalePtr->colorbar.y + scalePtr->colorbar.height / 2);
-            } else {
-                Blt_Ts_SetAnchor(ts, TK_ANCHOR_W);
-                Blt_Ts_DrawText(scalePtr->tkwin, drawable, labelPtr->string, -1,
-                                &ts, x + scalePtr->gripWidth,
-                    scalePtr->colorbar.y + scalePtr->colorbar.height / 2);
-            }
+            Blt_Ts_DrawText(scalePtr->tkwin, drawable,
+                            scalePtr->valuePtr->string, -1, &ts,
+                            scalePtr->valuePtr->x, scalePtr->valuePtr->y);
         } else {
-            TextStyle ts;
-            int y;
-            
-            Blt_Ts_InitStyle(ts);
-            Blt_Ts_SetFont(ts, scalePtr->valueFont);
-            Blt_Ts_SetAngle(ts, scalePtr->valueAngle);
-            Blt_Ts_SetPadding(ts, 1, 2, 0, 0);
-            Blt_Ts_SetForeground(ts, scalePtr->valueColor);
-            y = VMap(scalePtr, scalePtr->mark);
-            Blt_Ts_SetMaxLength(ts, scalePtr->height - 2 * scalePtr->inset);
-            if (y < (scalePtr->y1 + labelPtr->width + scalePtr->arrowHeight)) {
-                Blt_Ts_SetAnchor(ts, TK_ANCHOR_CENTER);
-                Blt_Ts_DrawText(scalePtr->tkwin, drawable, labelPtr->string, -1,
-                       &ts, scalePtr->colorbar.x + scalePtr->colorbar.width / 2,
-                       y + scalePtr->gripWidth);
-            } else {
-                Blt_Ts_SetAnchor(ts, TK_ANCHOR_CENTER);
-                Blt_Ts_DrawText(scalePtr->tkwin, drawable, labelPtr->string, -1,
-                       &ts, scalePtr->colorbar.x + scalePtr->colorbar.width / 2,
-                       y - scalePtr->gripWidth);
-            }
+            Blt_Ts_DrawText(scalePtr->tkwin, drawable,
+                            scalePtr->valuePtr->string, -1, &ts,
+                            scalePtr->valuePtr->x, scalePtr->valuePtr->y);
         }
-        Blt_Free(labelPtr);
     }
 }
 
@@ -4972,6 +5017,69 @@ ActivateOp(ClientData clientData, Tcl_Interp *interp, int objc,
     EventuallyRedraw(scalePtr);
     return TCL_OK;
 }
+/*
+ *---------------------------------------------------------------------------
+ *
+ * BBoxOp --
+ *
+ *    Returns the name of the picked axis (using the axis bind operation).
+ *    Right now, the only name accepted is "current".
+ *
+ * Results:
+ *    A standard TCL result.  The interpreter result will contain the name of
+ *    the axis.
+ *
+ *      pathName bbox min|max|mark|rmin|rmax|
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static int
+BBoxOp(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
+{
+    Scale *scalePtr = clientData;
+    Tcl_Obj *listObjPtr;
+    char c;
+    const char *string;
+    double value;
+    int length;
+    int x1, y1, x2, y2;
+    
+    string = Tcl_GetStringFromObj(objv[2], &length);
+    c = string[0];
+    x1 = y1 = x2 = y2 = 0;
+    if ((c == 'v') && (length > 1) &&
+        (strncmp(string, "value", length) == 0)) {
+        x1 = scalePtr->valuePtr->x;
+        y1 = scalePtr->valuePtr->y;
+        x2 = x1 + scalePtr->valuePtr->width;
+        y2 = y1 + scalePtr->valuePtr->height;
+    } else if ((c == 'm') && (length > 2) &&
+               (strncmp(string, "max", length) == 0)) {
+        value = scalePtr->outerRight;
+    } else if ((c == 'r') && (length > 2) &&
+               (strncmp(string, "rmin", length) == 0)) {
+        value = scalePtr->innerLeft;
+    } else if ((c == 'r') && (length > 2) &&
+               (strncmp(string, "rmax", length) == 0)) {
+        value = scalePtr->innerRight;
+    } else if ((c == 'm') && (length > 2) &&
+               (strncmp(string, "mark", length) == 0)) {
+        value = scalePtr->mark;
+    } else {
+        Tcl_AppendResult(interp, "unknown scale part \"", string, 
+                         "\": should be max, min, rmin, rmax, or mark.", 
+                         (char *)NULL);
+        return TCL_ERROR;
+    }
+    listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **)NULL);
+    Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewIntObj(x1));
+    Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewIntObj(y1));
+    Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewIntObj(x2));
+    Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewIntObj(y2));
+    Tcl_SetObjResult(interp, listObjPtr);
+    return TCL_OK;
+}
 
 /*---------------------------------------------------------------------------
  *
@@ -5008,6 +5116,8 @@ BindOp(ClientData clientData, Tcl_Interp *interp, int objc,
         id = PICK_COLORBAR;
     } else if ((c == 'm') && (strncmp(string, "mark", length) == 0)) {
         id = PICK_MARK;
+    } else if ((c == 'v') && (strncmp(string, "value", length) == 0)) {
+        id = PICK_VALUE;
     } else {
         Tcl_AppendResult(interp, "unknown scale part \"", string, 
                          "\": should be axis, colorbar, grip, mark, maxarrow, "
@@ -5341,7 +5451,8 @@ SetOp(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 
 static Blt_OpSpec scaleOps[] = {
     {"activate",     1, ActivateOp,     3, 3, "part"},
-    {"bind",         1, BindOp,         2, 5, "sequence command"},
+    {"bbox",         2, BBoxOp,         3, 3, "part"},
+    {"bind",         2, BindOp,         2, 5, "sequence command"},
     {"cget",         2, CgetOp,         3, 3, "option"},
     {"configure",    2, ConfigureOp,    2, 0, "?option value?..."},
     {"deactivate",   1, ActivateOp,     3, 3, "part"},

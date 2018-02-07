@@ -14,4 +14,20 @@ blt::scale .s -orient horizontal \
 blt::table . \
     0,0 .s -fill both
 
+proc EditValue { w } {
+    if { ![winfo exists .s.editor] } {
+	blt::comboeditor .s.editor -exportselection yes
+    }
+    foreach { x1 y1 x2 y2 } [$w bbox value] break
+    incr x1 [winfo rootx $w] 
+    incr y1 [winfo rooty $w]
+    incr x2 [winfo rootx $w]
+    incr y2 [winfo rooty $w]
+    .s.editor post -align right -box [list $x1 $y1 $x2 $y2] \
+        -text [$w get mark]
+    focus -force .s.editor
+}
+.s bind value <ButtonPress-1> {
+    EditValue %W
+}    
 focus .s

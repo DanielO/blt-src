@@ -1931,7 +1931,7 @@ ftFontPatternToDString(Tcl_Interp *interp, FcPattern *pattern,
     result = FcPatternGetString(pattern, FC_FAMILY, 0, &family);
     if (result == FcResultMatch) {
         Tcl_DStringAppendElement(resultPtr, "-family");
-        Tcl_DStringAppendElement(resultPtr, family);
+        Tcl_DStringAppendElement(resultPtr, (char *)family);
     }
 
     /* Weight */
@@ -2591,16 +2591,16 @@ static Blt_Font
 ftFontDupProc(Tk_Window tkwin, _Blt_Font *fontPtr, double size) 
 {
     Blt_HashEntry *hPtr;
-    FcChar8 *name, *family;
+    FcChar8 *family;
     FcPattern *pattern, *matchingPattern;
     FcResult result;
+    Tcl_DString ds;
     _Blt_Font *dupPtr; 
+    const char *name;
     ftFontset *newPtr;
     ftFontset *setPtr = fontPtr->clientData;
-    int isNew;
-    int width, slant, weight;
-    Tcl_DString ds;
-
+    int isNew, width, slant, weight;
+    
     pattern = FcPatternCreate();
     FcPatternAddBool(pattern, FC_ANTIALIAS, FcTrue);
     FcPatternAddBool(pattern, FC_SCALABLE, FcTrue);
