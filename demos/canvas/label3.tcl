@@ -37,7 +37,8 @@ proc MarchingAnts { canvas id } {
 
 proc Activate { canvas id } {
     global afterId dashOffset
-    #$canvas itemconfigure $id -state active -activebg [NextColor]
+    $canvas itemconfigure $id -state active 
+    #-activebg [NextColor]
     set dashOffset -1
     after cancel $afterId
     MarchingAnts $canvas $id
@@ -45,7 +46,8 @@ proc Activate { canvas id } {
 }
 proc Deactivate { canvas id bg } {
     global afterId 
-    #$canvas itemconfigure $id -state normal -bg $bg
+    $canvas itemconfigure $id -state normal
+    #-bg $bg
     after cancel $afterId
 }
 
@@ -96,20 +98,23 @@ set id [.ss.c create label 300 200 \
 .ss.c bind $id <Leave> [list Deactivate .ss.c $id $bg3]
 }
 
-set id [.ss.c create label 500 500 \
+    set cx [expr [winfo reqwidth .ss.c] / 2]
+    set cy [expr [winfo reqheight .ss.c] / 2]
+set id [.ss.c create label $cx $cy \
 	    -text "Hello, World" \
 	    -bg $bg3 \
 	    -activelinewidth 2 -activedashes 4 \
+	    -activebg $bg3 \
 	    -linewidth 1 \
 	    -anchor c \
 	    -textanchor c \
 	    -padx 0 \
 	    -font "Arial 12" \
 	    -scaletofit 1 \
-	    -maxfontsize "28" \
-	    -rotate 90 \
-	    -width 50 \
-	    -height 25]
+	    -maxfontsize "38" \
+	    -rotate 0 \
+	    -width 5.0 \
+	    -height 2.5]
 
 blt::table . \
     0,0 .ss -fill both
