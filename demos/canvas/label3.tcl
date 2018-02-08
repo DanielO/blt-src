@@ -107,9 +107,9 @@ set id [.ss.c create label 500 500 \
 	    -font "Arial 12" \
 	    -scaletofit 1 \
 	    -maxfontsize "28" \
-	    -rotate 90 \
-	    -width 50 \
-	    -height 25]
+	    -rotate 0 \
+	    -width 0.0050 \
+	    -height 0.0025]
 
 blt::table . \
     0,0 .ss -fill both
