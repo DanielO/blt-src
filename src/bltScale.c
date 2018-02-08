@@ -77,6 +77,7 @@
 #define MAXTICKS        10001
 
 #define FCLAMP(x)       ((((x) < 0.0) ? 0.0 : ((x) > 1.0) ? 1.0 : (x)))
+#define VAR_FLAGS (TCL_GLOBAL_ONLY|TCL_TRACE_WRITES|TCL_TRACE_UNSETS)
 
 /*
  * Round x in terms of units
@@ -430,6 +431,7 @@ typedef struct _Scale {
     Tcl_Obj *varNameObjPtr;             /* Name of TCL variable to be
                                          * updated when the current value
                                          * changes. */
+    Tcl_Obj *cmdObjPtr;
     double min, max;                    /* The actual scale range. */
     double reqMin, reqMax;              /* Requested scale bounds. Consult
                                          * the scalePtr->flags field for
@@ -657,6 +659,12 @@ static Blt_OptionPrintProc OrientToObj;
 static Blt_CustomOption orientOption = {
     ObjToOrient, OrientToObj, NULL, (ClientData)0
 };
+static Blt_OptionFreeProc FreeTraceVarProc;
+static Blt_OptionParseProc ObjToTraceVar;
+static Blt_OptionPrintProc TraceVarToObj;
+static Blt_CustomOption traceVarOption = {
+    ObjToTraceVar, TraceVarToObj, FreeTraceVarProc, (ClientData)0
+};
 
 static Blt_ConfigSpec configSpecs[] =
 {
@@ -696,6 +704,8 @@ static Blt_ConfigSpec configSpecs[] =
     {BLT_CONFIG_PIXELS_NNEG, "-colorbarthickness", "colorBarThickness", 
         "ColorBarThickness", DEF_COLORBAR_THICKNESS, 
         Blt_Offset(Scale, colorbar.thickness), 0},
+    {BLT_CONFIG_OBJ, "-command", "command", "Command", DEF_COMMAND, 
+        Blt_Offset(Scale, cmdObjPtr), BLT_CONFIG_NULL_OK},
     {BLT_CONFIG_ACTIVE_CURSOR, "-cursor", "cursor", "Cursor",
         DEF_CURSOR, Blt_Offset(Scale, cursor), BLT_CONFIG_NULL_OK},
     {BLT_CONFIG_BITMASK, "-decreasing", "decreasing", "Decreasing",
@@ -750,8 +760,8 @@ static Blt_ConfigSpec configSpecs[] =
         Blt_Offset(Scale, outerLeft), BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_CUSTOM, "-mark", "mark", "Mark", (char *)NULL, 
         Blt_Offset(Scale, mark), 0, &limitOption},
-    {BLT_CONFIG_OBJ, "-variable", "variable", "Variable", (char *)NULL,
-        Blt_Offset(Scale, varNameObjPtr), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_CUSTOM, "-variable", "variable", "Variable", (char *)NULL,
+        Blt_Offset(Scale, varNameObjPtr), BLT_CONFIG_NULL_OK, &traceVarOption},
     {BLT_CONFIG_PIX32, "-markcolor", "markColor", "MarkColor", 
         DEF_MARK_COLOR,  Blt_Offset(Scale, markColor), 0}, 
     {BLT_CONFIG_PIXELS_NNEG, "-markthickness", "markThickness", "MarkThickness",
@@ -861,6 +871,7 @@ static Tcl_IdleProc DisplayProc;
 static Tcl_FreeProc FreeScale;
 static Blt_BindPickProc PickPartProc;
 static Blt_BindAppendTagsProc AppendTagsProc;
+static Tcl_VarTraceProc TraceVarProc;
 
 static void
 SetAxisRange(AxisRange *rangePtr, double min, double max)
@@ -960,6 +971,42 @@ EventuallyRedraw(Scale *scalePtr)
         scalePtr->flags |= REDRAW_PENDING;
         Tcl_DoWhenIdle(DisplayProc, scalePtr);
     }
+}
+
+static int
+SetValue(Scale *scalePtr, double mark)
+{
+    /* If there's a resolution set, round to the nearest unit.  */
+    if (scalePtr->resolution > 0.0) {
+        mark = UROUND(mark, scalePtr->resolution);
+    }
+    /* Bound the new value to the inner interval. */
+    if (mark < scalePtr->innerLeft) {
+        mark = scalePtr->innerLeft;
+    } else if (mark > scalePtr->innerRight) {
+        mark = scalePtr->innerRight;
+    }
+    scalePtr->mark = mark;
+    if (scalePtr->varNameObjPtr != NULL) {
+        const char *varName;
+        Tcl_Obj *objPtr;
+        
+        varName = Tcl_GetString(scalePtr->varNameObjPtr);
+        objPtr = Tcl_NewDoubleObj(scalePtr->mark);
+        Tcl_UntraceVar(scalePtr->interp, varName, VAR_FLAGS, TraceVarProc,
+                        scalePtr);
+        if (Tcl_SetVar2Ex(scalePtr->interp, varName, NULL, objPtr,
+                          TCL_LEAVE_ERR_MSG | TCL_GLOBAL_ONLY) == NULL) {
+            return TCL_ERROR;
+        }
+        Tcl_TraceVar(scalePtr->interp, varName, VAR_FLAGS, TraceVarProc,
+                        scalePtr);
+    }
+    if (scalePtr->cmdObjPtr != NULL) {
+        return Tcl_EvalObjEx(scalePtr->interp, scalePtr->cmdObjPtr,
+                             TCL_EVAL_GLOBAL);
+    }
+   return TCL_OK;
 }
 
 /*
@@ -1519,7 +1566,8 @@ ObjToShowFlags(ClientData clientData, Tcl_Interp *interp, Tk_Window tkwin,
             flag = SHOW_TICKLABELS;
         } else {
             Tcl_AppendResult(interp, "bad show flags value \"", string, 
-                "\": should be log, linear, or time", (char *)NULL);
+                "\": should be arrows, minarrow, maxarrow, value, grip, title, "
+                "colorbar, mark, ticks, ticklabels, or all", (char *)NULL);
             return TCL_ERROR;
         }
         if (showFlag) {
@@ -1725,6 +1773,172 @@ OrientToObj(ClientData clientData, Tcl_Interp *interp, Tk_Window parent,
         string = "horizontal";  
     }
     return Tcl_NewStringObj(string, -1);
+}
+
+
+/*
+ *---------------------------------------------------------------------------
+ * 
+ * TraceVarProc --
+ *
+ *      This procedure is invoked when someone changes the value variable
+ *      associated with the scale. 
+ *
+ * Results:
+ *      NULL is always returned.
+ *
+ * Side effects:
+ *      The mark may change.
+ *
+ *---------------------------------------------------------------------------
+ */
+static char *
+TraceVarProc(ClientData clientData, Tcl_Interp *interp, const char *name1,
+                  const char *name2, int flags)
+{
+    Scale *scalePtr = clientData;
+    double mark;
+    Tcl_Obj *objPtr;
+#define MAX_ERR_MSG     1023
+    static char message[MAX_ERR_MSG + 1];
+
+    assert(scalePtr->varNameObjPtr != NULL);
+    if (flags & TCL_INTERP_DESTROYED) {
+        return NULL;                    /* Interpreter is going away. */
+
+    }
+    /*
+     * If the variable is being unset, then re-establish the trace.
+     */
+    if (flags & TCL_TRACE_UNSETS) {
+        if (flags & TCL_TRACE_DESTROYED) {
+            char *varName;
+
+            varName = Tcl_GetString(scalePtr->varNameObjPtr);
+            Tcl_TraceVar(interp, varName, VAR_FLAGS, TraceVarProc, 
+                clientData);
+        }
+        EventuallyRedraw(scalePtr);
+        return NULL;
+    } 
+    /*
+     * Use the value of the variable to update the selected status of the
+     * item.
+     */
+    objPtr = Tcl_ObjGetVar2(interp, scalePtr->varNameObjPtr, NULL, 
+                            TCL_GLOBAL_ONLY);
+    if (objPtr == NULL) {
+        goto error;                   /* Can't get value of variable. */
+    }
+    if (Blt_GetDoubleFromObj(interp, objPtr, &mark) != TCL_OK) {
+        goto error;
+    }
+    if (scalePtr->flags & DISABLED) {
+        return NULL;
+    }
+    /* If there's a resolution set, round to the nearest unit.  */
+    if (scalePtr->resolution > 0.0) {
+        mark = UROUND(mark, scalePtr->resolution);
+    }
+    /* Bound the new value to the inner interval. */
+    if (mark < scalePtr->innerLeft) {
+        mark = scalePtr->innerLeft;
+    } else if (mark > scalePtr->innerRight) {
+        mark = scalePtr->innerRight;
+    }
+    scalePtr->mark = mark;
+    EventuallyRedraw(scalePtr);
+    return NULL;                        /* Done. */
+ error: 
+    strncpy(message, Tcl_GetStringResult(interp), MAX_ERR_MSG);
+    message[MAX_ERR_MSG] = '\0';
+    return message;
+}
+
+/*ARGSUSED*/
+static void
+FreeTraceVarProc(ClientData clientData, Display *display, char *widgRec, 
+                 int offset)
+{
+    Scale *scalePtr = (Scale *)(widgRec);
+    Tcl_Obj **varNameObjPtrPtr = (Tcl_Obj **)(widgRec + offset);
+
+    if (*varNameObjPtrPtr != NULL) {
+        const char *varName;
+
+        varName = Tcl_GetString(*varNameObjPtrPtr);
+        Tcl_UntraceVar(scalePtr->interp, varName, VAR_FLAGS, TraceVarProc, 
+                scalePtr);
+        Tcl_DecrRefCount(*varNameObjPtrPtr);
+        *varNameObjPtrPtr = NULL;
+    }
+}
+
+/*
+ *---------------------------------------------------------------------------
+
+ * ObjToTraceVar --
+ *
+ *      Convert the string representation of a color into a XColor pointer.
+ *
+ * Results:
+ *      The return value is a standard TCL result.  The color pointer is
+ *      written into the widget record.
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static int
+ObjToTraceVar(ClientData clientData, Tcl_Interp *interp, Tk_Window tkwin,
+              Tcl_Obj *objPtr, char *widgRec, int offset, int flags)  
+{
+    Scale *scalePtr = (Scale *)(widgRec);
+    Tcl_Obj **varNameObjPtrPtr = (Tcl_Obj **)(widgRec + offset);
+    const char *varName;
+
+    /* Remove the current trace on the variable. */
+    if (*varNameObjPtrPtr != NULL) {
+        varName = Tcl_GetString(*varNameObjPtrPtr);
+        Tcl_UntraceVar(interp, varName, VAR_FLAGS, TraceVarProc, scalePtr);
+        Tcl_DecrRefCount(*varNameObjPtrPtr);
+        *varNameObjPtrPtr = NULL;
+    }
+    varName = Tcl_GetString(objPtr);
+    if ((varName[0] == '\0') && (flags & BLT_CONFIG_NULL_OK)) {
+        return TCL_OK;
+    }
+    *varNameObjPtrPtr = objPtr;
+    Tcl_IncrRefCount(objPtr);
+    Tcl_TraceVar(interp, varName, VAR_FLAGS, TraceVarProc, scalePtr);
+    return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * TraceVarToObj --
+ *
+ *      Return the name of the value variable.
+ *
+ * Results:
+ *      The variable name is returned.
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static Tcl_Obj *
+TraceVarToObj(ClientData clientData, Tcl_Interp *interp, Tk_Window tkwin,
+              char *widgRec, int offset, int flags)  
+{
+    Tcl_Obj *varNameObjPtr = *(Tcl_Obj **)(widgRec + offset);
+    Tcl_Obj *objPtr;
+    
+    if (varNameObjPtr == NULL) {
+        objPtr = Tcl_NewStringObj("", -1);
+    } else {
+        objPtr = varNameObjPtr;
+    }
+    return objPtr;
 }
 
 
@@ -5528,17 +5742,9 @@ SetOp(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
     if (scalePtr->flags & DISABLED) {
         return TCL_OK;
     }
-    /* If there's a resolution set, round to the nearest unit.  */
-    if (scalePtr->resolution > 0.0) {
-        mark = UROUND(mark, scalePtr->resolution);
+    if (SetValue(scalePtr, mark) != TCL_OK) {
+        return TCL_ERROR;
     }
-    /* Bound the new value to the inner interval. */
-    if (mark < scalePtr->innerLeft) {
-        mark = scalePtr->innerLeft;
-    } else if (mark > scalePtr->innerRight) {
-        mark = scalePtr->innerRight;
-    }
-    scalePtr->mark = mark;
     EventuallyRedraw(scalePtr);
     return TCL_OK;
 }
