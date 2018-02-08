@@ -333,7 +333,7 @@ static Tk_ConfigSpec configSpecs[] = {
     {TK_CONFIG_SYNONYM, (char *)"-foreground", "fill"},
     {TK_CONFIG_CUSTOM, (char *)"-height", (char *)NULL, (char *)NULL,
         DEF_HEIGHT, Tk_Offset(LabelItem, reqHeight),
-        TK_CONFIG_DONT_SET_DEFAULT, &distanceOption},
+     TK_CONFIG_DONT_SET_DEFAULT, &distanceOption},
     {TK_CONFIG_CUSTOM, (char *)"-linewidth", (char *)NULL, (char *)NULL,
         DEF_NORMAL_LINEWIDTH, Tk_Offset(LabelItem, normal.lineWidth),
         TK_CONFIG_DONT_SET_DEFAULT, &bltDistanceOption},
@@ -369,7 +369,7 @@ static Tk_ConfigSpec configSpecs[] = {
         TK_CONFIG_DONT_SET_DEFAULT},
     {TK_CONFIG_CUSTOM, (char *)"-width", (char *)NULL, (char *)NULL,
         DEF_WIDTH, Tk_Offset(LabelItem, reqWidth),
-        TK_CONFIG_DONT_SET_DEFAULT, &distanceOption},
+     TK_CONFIG_DONT_SET_DEFAULT, &distanceOption},
     {TK_CONFIG_DOUBLE, (char *)"-xscale", (char *)NULL, (char *)NULL,
         DEF_XSCALE, Tk_Offset(LabelItem, xScale),
         TK_CONFIG_DONT_SET_DEFAULT},
@@ -643,20 +643,20 @@ StringToDistance(
     double value;
     int length;
 
-    if (Tk_GetPixels(NULL, tkwin, string, &length) == TCL_OK) {
-        if (length < 0) {
-            Tcl_AppendResult(interp, "bad distance \"", string, "\": ",
-                "can't be negative", (char *)NULL);
-            return TCL_ERROR;
-        }
-        *valuePtr = (double)length;
-    } else if (Tcl_GetDouble(interp, string, &value) == TCL_OK) {
+    if (Tcl_GetDouble(NULL, string, &value) == TCL_OK) {
         if (value < 0.0) {
             Tcl_AppendResult(interp, "bad distance \"", string, "\": ",
                 "can't be negative", (char *)NULL);
             return TCL_ERROR;
         }
         *valuePtr = value;
+    } else if (Tk_GetPixels(NULL, tkwin, string, &length) == TCL_OK) {
+        if (length < 0) {
+            Tcl_AppendResult(interp, "bad distance \"", string, "\": ",
+                "can't be negative", (char *)NULL);
+            return TCL_ERROR;
+        }
+        *valuePtr = (double)length;
     } else {
         Tcl_AppendResult(interp, "bad distance \"", string, "\": ",
                          "must be number", (char *)NULL);
@@ -856,8 +856,8 @@ ComputeGeometry(LabelItem *labelPtr)
             
             /* The size of the label was set and -scaletofit was set. */
             /* Scale the font so that it fits the given rectangle. */
-            xScale = (w - PADDING(labelPtr->xPad)) / (double)layoutPtr->width;
-            yScale = (h - PADDING(labelPtr->yPad)) / (double)layoutPtr->height;
+            xScale = w / ((double)layoutPtr->width + PADDING(labelPtr->xPad));
+            yScale = h / ((double)layoutPtr->height + PADDING(labelPtr->yPad));
             font = ScaleToFit(labelPtr, xScale, yScale);
             Blt_Ts_SetFont(ts, font);
             layoutPtr = Blt_Ts_CreateLayout(labelPtr->text, labelPtr->numBytes,
