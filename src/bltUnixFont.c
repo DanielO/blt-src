@@ -1918,12 +1918,11 @@ ftFontParseXLFD(Tcl_Interp *interp, Tk_Window tkwin, char *fontName)
 }
 
 static void
-ftFontPatternToDString(Tcl_Interp *interp, FcPattern *pattern, 
+ftFontPatternToDString(Tcl_Interp *interp, FcPattern *pattern, double size,
                      Tcl_DString *resultPtr)
 {
     FcChar8 *family;
     FcResult result;
-    double size;
     int weight, slant; 
 
     Tcl_DStringInit(resultPtr);
@@ -1950,11 +1949,6 @@ ftFontPatternToDString(Tcl_Interp *interp, FcPattern *pattern,
     Tcl_DStringAppendElement(resultPtr, "-slant");
     Tcl_DStringAppendElement(resultPtr, ftNameOfSlant(slant));
 
-    /* Size */
-    result = FcPatternGetDouble(pattern, FC_SIZE, 0, &size);
-    if (result != FcResultMatch) {
-        size = 12.0;
-    }
     Tcl_DStringAppendElement(resultPtr, "-size");
     Tcl_DStringAppendElement(resultPtr, Blt_Dtoa(interp, size));
 }
@@ -2591,78 +2585,84 @@ static Blt_Font
 ftFontDupProc(Tk_Window tkwin, _Blt_Font *fontPtr, double size) 
 {
     Blt_HashEntry *hPtr;
-    FcChar8 *family;
-    FcPattern *pattern, *matchingPattern;
-    FcResult result;
     Tcl_DString ds;
     _Blt_Font *dupPtr; 
     const char *name;
     ftFontset *newPtr;
     ftFontset *setPtr = fontPtr->clientData;
-    int isNew, width, slant, weight;
+    int isNew;
     
-    pattern = FcPatternCreate();
-    FcPatternAddBool(pattern, FC_ANTIALIAS, FcTrue);
-    FcPatternAddBool(pattern, FC_SCALABLE, FcTrue);
-    /* Family */
-    result = FcPatternGetString(setPtr->pattern, FC_FAMILY, 0, &family);
-    if (result != FcResultMatch) {
-        family = (FcChar8 *)"fixed";
-    }
-    FcPatternAddString(pattern, FC_FAMILY, family);
-    /* Weight */
-    result = FcPatternGetInteger(pattern, FC_WEIGHT, 0, &weight);
-    if (result != FcResultMatch) {
-        weight = FC_WEIGHT_MEDIUM;
-    }
-    FcPatternAddInteger(pattern, FC_WEIGHT, weight);
-    /* Slant */
-    result = FcPatternGetInteger(pattern, FC_SLANT, 0, &slant);
-    if (result != FcResultMatch) {
-        slant = FC_SLANT_ROMAN;
-    }
-    FcPatternAddInteger(pattern, FC_SLANT, slant);
-    /* Width */
-    result = FcPatternGetInteger(setPtr->pattern, FC_WIDTH, 0, &width);
-    if (result != FcResultMatch) {
-        width = FC_WEIGHT_MEDIUM;
-    }
-    FcPatternAddInteger(pattern, FC_WIDTH, width);
-    /* Size */
-    FcPatternAddDouble(pattern, FC_SIZE, size);
 
-    /* 
-     * XftFontMatch only sets *result* on complete match failures.  So
-     * initialize it here for a successful match. We'll accept partial
-     * matches.
-     */
-    result = FcResultMatch; 
-    matchingPattern = XftFontMatch(Tk_Display(tkwin), Tk_ScreenNumber(tkwin),
-                                   pattern, &result);
-    if (matchingPattern == NULL) {
-        fprintf(stderr, "doesn't match family=%s\n", family);
-        return NULL;
-    }
     Tcl_DStringInit(&ds);
-    ftFontPatternToDString(fontPtr->interp, matchingPattern, &ds);
+    ftFontPatternToDString(fontPtr->interp, setPtr->pattern, size, &ds);
     name = Tcl_DStringValue(&ds);
+
     /* Check if we already have this font. */
     hPtr = Blt_CreateHashEntry(&fontSetTable, (char *)name, &isNew);
     Tcl_DStringFree(&ds);
 
     if (!isNew) {
-        FcPatternDestroy(matchingPattern);
         newPtr = Blt_GetHashValue(hPtr);
         newPtr->refCount++;
     } else {
-        XftFont *xftFontPtr;
+        FcPattern *pattern, *matchingPattern;
+        FcResult result;
+        FcChar8 *family;
+        int width, slant, weight;
 
+        pattern = FcPatternCreate();
+        FcPatternAddBool(pattern, FC_ANTIALIAS, FcTrue);
+        FcPatternAddBool(pattern, FC_SCALABLE, FcTrue);
+        /* Family */
+        result = FcPatternGetString(setPtr->pattern, FC_FAMILY, 0, &family);
+        if (result != FcResultMatch) {
+            family = (FcChar8 *)"fixed";
+        }
+        FcPatternAddString(pattern, FC_FAMILY, family);
+        /* Weight */
+        result = FcPatternGetInteger(setPtr->pattern, FC_WEIGHT, 0, &weight);
+        if (result != FcResultMatch) {
+            weight = FC_WEIGHT_MEDIUM;
+        }
+        FcPatternAddInteger(pattern, FC_WEIGHT, weight);
+        /* Slant */
+        result = FcPatternGetInteger(setPtr->pattern, FC_SLANT, 0, &slant);
+        if (result != FcResultMatch) {
+            slant = FC_SLANT_ROMAN;
+        }
+        FcPatternAddInteger(pattern, FC_SLANT, slant);
+        /* Width */
+        result = FcPatternGetInteger(setPtr->pattern, FC_WIDTH, 0, &width);
+        if (result != FcResultMatch) {
+            width = FC_WEIGHT_MEDIUM;
+        }
+        FcPatternAddInteger(pattern, FC_WIDTH, width);
+        /* Size */
+        FcPatternAddDouble(pattern, FC_SIZE, size);
+        
+        /* 
+         * XftFontMatch only sets *result* on complete match failures.  So
+         * initialize it here for a successful match. We'll accept partial
+         * matches.
+         */
+        result = FcResultMatch; 
+        matchingPattern = XftFontMatch(Tk_Display(tkwin),
+                                       Tk_ScreenNumber(tkwin),
+                                       pattern, &result);
+        if (matchingPattern == NULL) {
+            fprintf(stderr, "doesn't match family=%s\n", family);
+            Blt_DeleteHashEntry(&fontSetTable, hPtr);
+            return NULL;
+        }
+        XftFont *xftFontPtr;
+        
         /* We don't have it. So see if we can open the font via the
          * modified new pattern. */
         xftFontPtr = XftFontOpenPattern(fontPtr->display, matchingPattern);
         if (xftFontPtr == NULL) {
             FcPatternDestroy(matchingPattern);
             fprintf(stderr, "Can't open font\n");
+            Blt_DeleteHashEntry(&fontSetTable, hPtr);
             return NULL;                    /* Can't open font using new
                                              * pattern. */
         }

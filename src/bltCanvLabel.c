@@ -45,6 +45,7 @@
  * o -maxfontsize and -minfontsize to constrain font size changes.
  * o -scaletofit shrink/grow/both/none option to set initial font size.
  * o Update documentation.
+ * o Clip label backgrounds. Could still break on lines or text.
  */
 
 #define USE_OLD_CANVAS  1
@@ -386,7 +387,7 @@ NearestFontSize(double size)
 {
     size = (int)size;
     if (size <= 0.0) {
-        size = 0.5;
+        size = 0.05;
     }
     return size;
 }
@@ -1151,6 +1152,7 @@ FillBackground(Tk_Canvas canvas, Drawable drawable, LabelItem *labelPtr,
     }
     tkwin = Tk_CanvasTkwin(canvas);
     if ((labelPtr->flags & ORTHOGONAL) && 
+        /* FIXME: clip rectangle before drawing. */
         (Blt_GetBrushAlpha(attrPtr->brush) == 0xFF)) {
         /* Rectangular opaque background. Either use the XFillRectangle
          * routine or the paint routines depending upon the type of
@@ -1183,6 +1185,7 @@ FillBackground(Tk_Canvas canvas, Drawable drawable, LabelItem *labelPtr,
         Blt_Painter painter;
         Blt_Picture picture;
 
+        /* FIXME: clip rectangle or polygon before drawing. */
         /* Non-opaque, or special brush background.  Use
          * paint routines after snapping the background. */
         picture = Blt_CreatePicture(w, h);
