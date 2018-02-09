@@ -57,7 +57,7 @@ blt::scrollset .ss \
     -window .ss.c 
 blt::tk::scrollbar .ss.ys
 blt::tk::scrollbar .ss.xs
-canvas .ss.c -bg white -width 1000 -height 1000
+canvas .ss.c -bg white -width 900 -height 900
 
 blt::table . \
     0,0 .ss -fill both

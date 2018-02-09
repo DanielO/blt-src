@@ -80,7 +80,7 @@
 #define DISPLAY_TEXT            (1<<2)
 #define ORTHOGONAL              (1<<3)
 #define CLIP                    (1<<4)
-#define SCALE_FONT              (1<<5)
+#define FIT_FONT              (1<<5)
 
 #define DEF_ACTIVE_DASHES               "0"
 #define DEF_ACTIVE_DASH_OFFSET          "0"
@@ -163,7 +163,6 @@ typedef struct {
     int textWidth, textHeight;		/* Unrotated dimensions of item. */
     double width, height;               /* Unrotated dimensions of the item. 
                                          * Could be scaled. */
-    double fontSize;			/* Current font size. */
 
     /* User configurable fields */
     double x, y;                        /* Requested anchor in canvas
@@ -209,6 +208,7 @@ typedef struct {
     double rotWidth, rotHeight;         /* Rotated width and height of
                                          * region occupied by label. */
     double xScale, yScale;
+    double xInitFontScale, yInitFontScale;
     TextLayout *layoutPtr;              /* Contains positions of the text
                                          * in label coordinates. */
     XPoint points[5];                   /* Points representing the rotated
@@ -387,7 +387,7 @@ NearestFontSize(double size)
 {
     size = (int)size;
     if (size <= 0.0) {
-        size = 0.05;
+        size = 1;
     }
     return size;
 }
@@ -788,12 +788,13 @@ FreeLabelGC(Display *display, LabelGC *gcPtr)
 }
 
 static Blt_Font
-ScaleToFit(LabelItem *labelPtr, double xScale, double yScale)
+ScaleToFit(LabelItem *labelPtr)
 {
     double newFontSize;
     Blt_Font font;
 
-    newFontSize = MIN(xScale, yScale) * Blt_Font_PointSize(labelPtr->baseFont);
+    newFontSize = MIN(labelPtr->xInitFontScale, labelPtr->yInitFontScale) * 
+        Blt_Font_PointSize(labelPtr->baseFont);
     labelPtr->flags |= DISPLAY_TEXT;
     if ((labelPtr->maxFontSize > 0) &&
         (newFontSize > labelPtr->maxFontSize)) {
@@ -806,17 +807,16 @@ ScaleToFit(LabelItem *labelPtr, double xScale, double yScale)
         fprintf(stderr, "can't resize font\n");
         labelPtr->flags &= ~DISPLAY_TEXT;
     }
-    if (labelPtr->baseFont != NULL) {
-        Blt_Font_Free(labelPtr->baseFont);
+    if (labelPtr->scaledFont != NULL) {
+        Blt_Font_Free(labelPtr->scaledFont);
     }
-    labelPtr->baseFont = font;
+    labelPtr->scaledFont = font;
     if (labelPtr->angle != 0.0) {
         if (!Blt_Font_CanRotate(font, labelPtr->angle)) {
             fprintf(stderr, "can't rotate font %s\n", 
                     Blt_Font_Name(font));
         }
     }
-    labelPtr->fontSize = Blt_Font_PointSize(font);
     return font;
 }
 
@@ -866,14 +866,14 @@ ComputeGeometry(LabelItem *labelPtr)
         if (labelPtr->reqHeight > 0.0) {
             h = labelPtr->reqHeight;
         }
-        if (labelPtr->flags & SCALE_FONT) {
-            double xScale, yScale;
-            
+        if (labelPtr->flags & FIT_FONT) {
             /* The size of the label was set and -scaletofit was set. */
             /* Scale the font so that it fits the given rectangle. */
-            xScale = w / ((double)layoutPtr->width + PADDING(labelPtr->xPad));
-            yScale = h / ((double)layoutPtr->height + PADDING(labelPtr->yPad));
-            font = ScaleToFit(labelPtr, xScale, yScale);
+            labelPtr->xInitFontScale = 
+                w / ((double)layoutPtr->width + PADDING(labelPtr->xPad));
+            labelPtr->yInitFontScale = 
+                h / ((double)layoutPtr->height + PADDING(labelPtr->yPad));
+            font = ScaleToFit(labelPtr);
             Blt_Ts_SetFont(ts, font);
             layoutPtr = Blt_Ts_CreateLayout(labelPtr->text, labelPtr->numBytes,
                                             &ts);
@@ -881,7 +881,7 @@ ComputeGeometry(LabelItem *labelPtr)
                 Blt_Free(labelPtr->layoutPtr);
             }
             labelPtr->layoutPtr = layoutPtr;
-            labelPtr->flags &= ~SCALE_FONT;
+            labelPtr->flags &= ~FIT_FONT;
         }
     }
     /* Compute the outline polygon (isolateral or rectangle) given the
@@ -1357,7 +1357,6 @@ ConfigureProc(
     } else {
         labelPtr->numBytes = strlen(labelPtr->text);
     }
-    labelPtr->fontSize = Blt_Font_PointSize(labelPtr->baseFont);
     if (labelPtr->angle != 0.0) {
         if (!Blt_Font_CanRotate(labelPtr->baseFont, labelPtr->angle)) {
             fprintf(stderr, "can't rotate font %s\n", 
@@ -1370,7 +1369,7 @@ ConfigureProc(
                               (char *)NULL)) {
         if ((labelPtr->scaleToFit) &&
             (labelPtr->reqWidth > 0.0) && (labelPtr->reqHeight > 0.0)) {
-            labelPtr->flags |= SCALE_FONT;
+            labelPtr->flags |= FIT_FONT;
         }
         ComputeGeometry(labelPtr);
     }
@@ -1460,6 +1459,7 @@ CreateProc(
     labelPtr->x = x;
     labelPtr->xPad.side1 = labelPtr->xPad.side2 = 2;
     labelPtr->xScale = labelPtr->yScale = 1.0;
+    labelPtr->xInitFontScale = labelPtr->yInitFontScale = 1.0;
     labelPtr->y = y;
     labelPtr->yPad.side1 = labelPtr->yPad.side2 = 2;
     if (ConfigureProc(interp, canvas, itemPtr, argc - 2, argv + 2, 0) 
@@ -1699,8 +1699,10 @@ ScaleProc(
     labelPtr->xScale *= xScale;        /* Used to track overall scale */
     labelPtr->yScale *= yScale;
 
-    newFontSize = MIN(labelPtr->xScale, labelPtr->yScale) *
+    newFontSize = MIN(labelPtr->xScale * labelPtr->xInitFontScale,
+                      labelPtr->yScale * labelPtr->yInitFontScale) *
         Blt_Font_PointSize(labelPtr->baseFont);
+
     labelPtr->flags |= DISPLAY_TEXT;
     if ((labelPtr->minFontSize > 0) && (newFontSize < labelPtr->minFontSize)) {
         labelPtr->flags &= ~DISPLAY_TEXT;
@@ -1727,7 +1729,6 @@ ScaleProc(
                         Blt_Font_Name(font));
             }
         }
-        labelPtr->fontSize = Blt_Font_PointSize(font);
     } 
     x = xOrigin + xScale * (labelPtr->x - xOrigin);
     y = yOrigin + yScale * (labelPtr->y - yOrigin);

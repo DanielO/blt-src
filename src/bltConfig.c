@@ -2288,15 +2288,15 @@ Blt_ConfigModified(Blt_ConfigSpec *specs, ...)
  *              *graph.temperature.scaleSymbols yes
  *              *graph.Element.scaleSymbols yes
  *
- *      This is really a hack to work around the limitations of the Tk
- *      resource database.  It creates a temporary window, needed to
- *      call Tk_ConfigureWidget, using the name of the component.
+ *      This is really a hack to work around a limitation of the Tk
+ *      resource database.  It creates a temporary window, needed to call
+ *      Tk_GetOption, setting the class and name resources first.
  *
  * Results:
  *      A standard TCL result.
  *
  * Side Effects:
- *      A temporary window is created merely to pass to Tk_ConfigureWidget.
+ *      A temporary window is created merely to pass to Blt_ConfigureWidget.
  *
  *---------------------------------------------------------------------------
  */
@@ -2351,14 +2351,14 @@ Blt_ConfigureComponentFromObj(
      * restore the name later.*/
     nameUid = Blt_GetNameUid(tkwin);
 
-    /* Set the name and class of the window to what we want. */
+    /* Set the resource name and class of the window to what we want. */
     Blt_SetNameUid(tkwin, name);
     Tk_SetClass(tkwin, className);
     result = Blt_ConfigureWidgetFromObj(interp, tkwin, sp, objc, objv, 
         widgRec, flags);
 
-    /* Restore the old name before destroying the window. The window is
-     * not destroyed immediately */
+    /* Restore the old name before destroying the window. The window is not
+     * destroyed immediately. */
     Blt_SetNameUid(tkwin, nameUid);
     Tk_DestroyWindow(tkwin);
     return result;
