@@ -387,7 +387,7 @@ NearestFontSize(double size)
 {
     size = (int)size;
     if (size <= 0.0) {
-        size = 1;
+        size = 0.5;
     }
     return size;
 }
@@ -1457,11 +1457,12 @@ CreateProc(
     labelPtr->textAnchor = TK_ANCHOR_NW;
     labelPtr->tkwin  = tkwin;
     labelPtr->x = x;
-    labelPtr->xPad.side1 = labelPtr->xPad.side2 = 2;
-    labelPtr->xScale = labelPtr->yScale = 1.0;
     labelPtr->xInitFontScale = labelPtr->yInitFontScale = 1.0;
+    labelPtr->xPad.side1 = labelPtr->xPad.side2 = labelPtr->yPad.side1 = \
+        labelPtr->yPad.side2 = 2;
+    labelPtr->xScale = labelPtr->yScale = 1.0;
     labelPtr->y = y;
-    labelPtr->yPad.side1 = labelPtr->yPad.side2 = 2;
+    labelPtr->minFontSize = 1;
     if (ConfigureProc(interp, canvas, itemPtr, argc - 2, argv + 2, 0) 
         != TCL_OK) {
         DeleteProc(canvas, itemPtr, Tk_Display(tkwin));
