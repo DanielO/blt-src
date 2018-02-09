@@ -509,7 +509,7 @@ proc blt::TreeView::Initialize { w } {
 	%W column resize mark %x
     }
     $w column resize bind all <ButtonRelease-1> {
-	%W column configure active -width [%W column resize set]
+	%W column resize set
     }
     $w column title bind all <ButtonPress-1> {
 	set blt::TreeView::_private(column) active

@@ -11134,6 +11134,7 @@ ColumnResizeMarkOp(ClientData clientData, Tcl_Interp *interp, int objc,
  *
  *      Returns the new width of the column including the resize delta.
  *
+ *	pathName column resize set
  *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
@@ -11153,6 +11154,9 @@ ColumnResizeSetOp(ClientData clientData, Tcl_Interp *interp, int objc,
         width = viewPtr->colResizePtr->width + delta - 
             (PADDING(colPtr->pad) + 2 * colPtr->borderWidth) - 1;
         Tcl_SetIntObj(Tcl_GetObjResult(interp), width);
+	colPtr->reqWidth = width;
+	viewPtr->flags |= LAYOUT_PENDING;
+	EventuallyRedraw(viewPtr);
     }
     return TCL_OK;
 }
