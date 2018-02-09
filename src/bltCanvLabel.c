@@ -712,9 +712,9 @@ GetStateAttributes(LabelItem *labelPtr)
         return &labelPtr->disabled;
     case TK_STATE_ACTIVE:
         return &labelPtr->active;
+    case TK_STATE_HIDDEN:
     case TK_STATE_NORMAL:
         return &labelPtr->normal;
-    case TK_STATE_HIDDEN:
     default:
         return NULL;
     }
@@ -1795,7 +1795,9 @@ DisplayProc(
             rx, ry, rw, rh);
 #endif
     if (labelPtr->state == TK_STATE_HIDDEN) {
+#if DEBUG
         fprintf(stderr, "item is hidden\n");
+#endif
         return;                         /* Item is hidden. */
     }
     /* Convert anchor from world coordinates to screen. */
