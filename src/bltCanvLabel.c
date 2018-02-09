@@ -381,6 +381,16 @@ static Tk_ConfigSpec configSpecs[] = {
 };
 
 
+INLINE static double
+NearestFontSize(double size)
+{
+    size = (int)size;
+    if (size <= 0.0) {
+        size = 0.5;
+    }
+    return size;
+}
+        
 /*
  *---------------------------------------------------------------------------
  *
@@ -784,9 +794,13 @@ ScaleToFit(LabelItem *labelPtr, double xScale, double yScale)
 
     newFontSize = MIN(xScale, yScale) * Blt_Font_PointSize(labelPtr->baseFont);
     labelPtr->flags |= DISPLAY_TEXT;
+    if ((labelPtr->maxFontSize > 0) &&
+        (newFontSize > labelPtr->maxFontSize)) {
+        newFontSize = labelPtr->maxFontSize;
+    } 
     /* Create a scaled font and replace the base font with it. */
     font = Blt_Font_Duplicate(labelPtr->tkwin, labelPtr->baseFont,
-                              newFontSize);
+                              NearestFontSize(newFontSize));
     if (font == NULL) {
         fprintf(stderr, "can't resize font\n");
         labelPtr->flags &= ~DISPLAY_TEXT;
@@ -1695,7 +1709,7 @@ ScaleProc(
             newFontSize = labelPtr->maxFontSize;
         } 
         font = Blt_Font_Duplicate(labelPtr->tkwin, labelPtr->baseFont,
-                                  newFontSize);
+                                  NearestFontSize(newFontSize));
         if (font == NULL) {
             fprintf(stderr, "can't resize font\n");
             labelPtr->flags &= ~DISPLAY_TEXT;
