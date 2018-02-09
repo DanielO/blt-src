@@ -160,6 +160,53 @@ Blt_FreeDrawableAttributes(Display *display, Drawable drawable)
 /*
  *---------------------------------------------------------------------------
  *
+ * Blt_GetNameUid --
+ *
+ *      Gets the name uid of the window.  This is used by
+ *      Blt_ConfigureComponentFromObj to restore the name of the window
+ *      after temporarily changing it.
+ *
+ * Results:
+ *      The uid of the Tk_Window. 
+ *
+ *---------------------------------------------------------------------------
+ */
+Tk_Uid
+Blt_GetNameUid(Tk_Window tkwin)
+{
+    return ((TkWindow *)tkwin)->nameUid;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * Blt_SetNameUid --
+ *
+ *      Sets the name Uid of the window.  This is used by
+ *      Blt_ConfigureComponentFromObj to temporarily change the name of the
+ *      window so that Tk_GetOption will pick up the name we want.
+ *
+ * Results:
+ *      None.
+ *
+ *---------------------------------------------------------------------------
+ */
+void
+Blt_SetNameUid(Tk_Window tkwin, const char *name)
+{
+    TkWindow *winPtr = (TkWindow *)tkwin;
+    Tk_Uid nameUid;
+
+    nameUid = Tk_GetUid(name);
+    if (winPtr->nameUid == nameUid) {
+        return;
+    }
+    winPtr->nameUid = nameUid;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
  * Blt_FindChild --
  *
  *      Performs a linear search for the named child window in a given

@@ -215,6 +215,9 @@ BLT_EXTERN Blt_Chain Blt_GetChildrenFromWindow(Display *display, Window window);
 
 BLT_EXTERN Window Blt_GetParentWindow(Display *display, Window window);
 
+BLT_EXTERN Tk_Uid Blt_GetNameUid(Tk_Window tkwin);
+BLT_EXTERN void Blt_SetNameUid(Tk_Window tkwin, const char *name);
+
 BLT_EXTERN Tk_Window Blt_FindChild(Tk_Window parent, char *name);
 
 BLT_EXTERN Tk_Window Blt_FirstChild(Tk_Window parent);

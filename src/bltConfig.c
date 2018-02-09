@@ -2317,16 +2317,19 @@ Blt_ConfigureComponentFromObj(
     int result;
     char *tmpName;
     Tcl_Obj *nameObjPtr;
+    Display *display;
+    Tk_Uid nameUid;
 
-    nameObjPtr = Tcl_NewStringObj(name, -1);
+    nameObjPtr = Tcl_NewStringObj("bltConfigureComponent", -1);
     tmpName = Tcl_GetString(nameObjPtr);
     /* Window name can't start with an upper case letter */
-    tmpName[0] = tolower(name[0]);
+    tmpName[0] = tolower(tmpName[0]);
     
     /*
-     * Create a child window by the component's name. If one already
-     * exists, create a temporary name.
+     * Create a child window by name "bltConfigureComponent". If one
+     * already exists, create a temporary name (how?).
      */
+    display = Tk_Display(parent);
     tkwin = Blt_FindChild(parent, tmpName);
     if (tkwin != NULL) {
         Tcl_AppendToObj(nameObjPtr, "-temp", 5);
@@ -2344,9 +2347,19 @@ Blt_ConfigureComponentFromObj(
     assert(Tk_Depth(tkwin) == Tk_Depth(parent));
     Tcl_DecrRefCount(nameObjPtr);
 
+    /* Get the current name Uid of the temporary window. We'll use it to
+     * restore the name later.*/
+    nameUid = Blt_GetNameUid(tkwin);
+
+    /* Set the name and class of the window to what we want. */
+    Blt_SetNameUid(tkwin, name);
     Tk_SetClass(tkwin, className);
     result = Blt_ConfigureWidgetFromObj(interp, tkwin, sp, objc, objv, 
         widgRec, flags);
+
+    /* Restore the old name before destroying the window. The window is
+     * not destroyed immediately */
+    Blt_SetNameUid(tkwin, nameUid);
     Tk_DestroyWindow(tkwin);
     return result;
 }
