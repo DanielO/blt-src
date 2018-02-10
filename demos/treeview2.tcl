@@ -129,7 +129,7 @@ set img [image create picture -data {
 }]
 	 
 .ss.t style textbox mode -font "{courier new} 9"
-.ss.t column configure treeView -text "name"  -sorttype dictionary
+.ss.t column configure treeView -title "name"  -sorttype dictionary
 .ss.t column insert end mtime -formatcommand FormatDate -justify right \
     -sorttype integer
 .ss.t column insert end perms -formatcommand FormatPerms -justify right \

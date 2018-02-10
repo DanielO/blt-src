@@ -207,7 +207,7 @@
 #define DEF_FOCUS_DASHES        "0"
 #define DEF_FOCUS_FG_MONO       STD_ACTIVE_FG_MONO
 #define DEF_FOCUS_FOREGROUND    RGB_SKYBLUE1
-#define DEF_FONT                STD_FONT_NORMAL
+#define DEF_FONT                STD_FONT_SMALL
 #define DEF_HEIGHT              "400"
 #define DEF_HIDE_LEAVES         "no"
 #define DEF_HIDE_ROOT           "yes"
@@ -422,7 +422,7 @@ static Blt_ConfigSpec entrySpecs[] = {
         BLT_CONFIG_NULL_OK, &dataOption},
     {BLT_CONFIG_SYNONYM, "-fg", "foreground"},
     {BLT_CONFIG_FONT, "-font", (char *)NULL, (char *)NULL, (char *)NULL, 
-        Blt_Offset(Entry, font), 0},
+        Blt_Offset(Entry, font), BLT_CONFIG_NULL_OK},
     {BLT_CONFIG_COLOR, "-foreground", "foreground", (char *)NULL,
         DEF_ENTRY_FOREGROUND, Blt_Offset(Entry, color), BLT_CONFIG_NULL_OK},
     {BLT_CONFIG_PIXELS_NNEG, "-height", (char *)NULL, (char *)NULL, 
@@ -1026,7 +1026,7 @@ FindEntry(TreeView *viewPtr, Blt_TreeNode node)
     return Blt_GetHashValue(hPtr);
 }
 
-static INLINE int
+INLINE static int
 EntryIsHidden(Entry *entryPtr)
 {
     TreeView *viewPtr = entryPtr->viewPtr; 
@@ -1037,7 +1037,7 @@ EntryIsHidden(Entry *entryPtr)
     return (entryPtr->flags & HIDDEN) ? TRUE : FALSE;
 }
 
-static INLINE int
+INLINE static int
 EntryIsSelected(TreeView *viewPtr, Entry *entryPtr)
 {
     Blt_HashEntry *hPtr;
@@ -1508,15 +1508,16 @@ GetVerticalLineCoordinates(Entry *entryPtr, int *y1Ptr, int *y2Ptr)
     TreeView *viewPtr = entryPtr->viewPtr; 
     int y1, y2;
 
-    botPtr = entryPtr->lastChildPtr;
+    botPtr = LastChild(entryPtr, HIDDEN | CLOSED);
     topPtr = entryPtr;
     if ((viewPtr->rootPtr == entryPtr) && (viewPtr->flags & HIDE_ROOT)) {
         topPtr = NextEntry(entryPtr, HIDDEN | CLOSED);
         assert(topPtr != NULL);
     }
-    y1 = SCREENY(viewPtr, topPtr->worldY) + (topPtr->height / 2);
-    y2 = SCREENY(viewPtr, botPtr->worldY) + (botPtr->height / 2);
-
+    y1 = y2 = SCREENY(viewPtr, topPtr->worldY) + (topPtr->height / 2);
+    if (botPtr != NULL) {
+	y2 = SCREENY(viewPtr, botPtr->worldY) + (botPtr->height / 2);
+    }
     /* Make sure the vertical line starts on an odd pixel. */
     y1 |= 0x1;
     /*
@@ -7982,7 +7983,6 @@ DrawLines(
             ax = x + ICONWIDTH(level) + ICONWIDTH(level + 1) / 2;
             ax |= 0x1;
             GetVerticalLineCoordinates(entryPtr, &ay, &by);
-
             if ((ay < Tk_Height(viewPtr->tkwin)) && (by > 0)) {
                 XDrawLine(viewPtr->display, drawable, gc, ax, ay, ax, by);
             }
@@ -9059,7 +9059,6 @@ DisplayProc(ClientData clientData)      /* Information about widget. */
 #ifdef notdef
     fprintf(stderr, "DisplayProc %s\n", Tk_PathName(viewPtr->tkwin));
 #endif
-
     UpdateView(viewPtr);
     reqHeight = (viewPtr->reqHeight > 0) ? viewPtr->reqHeight : 
         viewPtr->worldHeight + viewPtr->titleHeight + 2 * viewPtr->inset + 1;
