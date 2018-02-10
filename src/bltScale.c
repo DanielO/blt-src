@@ -4236,7 +4236,9 @@ ConfigureScale(
 {
     float angle;
     Blt_FontMetrics fm;
-
+    double oldMark;
+    
+    oldMark = scalePtr->mark;
     if (Blt_ConfigureWidgetFromObj(interp, scalePtr->tkwin, configSpecs, 
            objc, objv, (char *)scalePtr, flags) != TCL_OK) {
         return TCL_ERROR;
@@ -4335,6 +4337,9 @@ ConfigureScale(
             mark -= scalePtr->resolution;
         }
         scalePtr->mark = mark;
+    }
+    if (scalePtr->mark != oldMark) {
+        SetValue(scalePtr, scalePtr->mark);
     }
     if (IsLogScale(scalePtr)) {
         LogScaleAxis(scalePtr);
@@ -5083,20 +5088,23 @@ DrawScale(Scale *scalePtr, Drawable drawable)
             x = HMap(scalePtr, scalePtr->mark);
             /* Current value line. */
             if (scalePtr->flags & SHOW_MARK) {
-                Blt_Picture picture;
-                Blt_PaintBrush brush;
                 int w, h;
 
-                brush = Blt_NewColorBrush(scalePtr->markColor.u32);
                 w = scalePtr->markWidth;
                 h = Tk_Height(scalePtr->tkwin) - 2 * (scalePtr->inset + PADY);
-                picture = Blt_CreatePicture(w, h);
-                Blt_SetBrushArea(brush, 0, 0, w, h);
-                Blt_PaintRectangle(picture, 0, 0, w, h, 0, 0, brush, 0);
-                Blt_PaintPicture(scalePtr->painter, drawable, picture, 0, 0, 
-                                 w, h, x - w / 2, scalePtr->inset + PADY, TRUE);
-                Blt_FreePicture(picture);
-                Blt_FreeBrush(brush);
+                if ((w > 0) && (h > 0)) {
+                    Blt_Picture picture;
+                    Blt_PaintBrush brush;
+
+                    brush = Blt_NewColorBrush(scalePtr->markColor.u32);
+                    picture = Blt_CreatePicture(w, h);
+                    Blt_SetBrushArea(brush, 0, 0, w, h);
+                    Blt_PaintRectangle(picture, 0, 0, w, h, 0, 0, brush, 0);
+                    Blt_PaintPicture(scalePtr->painter, drawable, picture, 0, 0,
+                         w, h, x - w / 2, scalePtr->inset + PADY, TRUE);
+                    Blt_FreePicture(picture);
+                    Blt_FreeBrush(brush);
+                }
             }
             if ((scalePtr->flags & (ACTIVE|SHOW_GRIP)) == (ACTIVE|SHOW_GRIP)) {
                 Blt_Bg_FillRectangle(scalePtr->tkwin, drawable, bg, 
