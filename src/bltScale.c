@@ -365,6 +365,7 @@ typedef struct {
     Blt_Palette palette;                /* Color palette for colorbar. */
     int thickness;
     int x, y, width, height;
+    Blt_Picture picture;
 } Colorbar;
 
 /*
@@ -3574,12 +3575,10 @@ NextMinorTick(Scale *scalePtr)
 static void
 GetAxisGeometry(Scale *scalePtr)
 {
-    int h;
     int numTicks;
     Tick left, right;
 
     FreeTickLabels(scalePtr->tickLabels);
-    h = 0;
     
     scalePtr->maxTickLabelHeight = scalePtr->maxTickLabelWidth = 0;
     
@@ -3657,7 +3656,7 @@ ComputeHorizontalGeometry(Scale *scalePtr)
     x1 = scalePtr->inset + leftPad + PADX;    
     x2 = Tk_Width(scalePtr->tkwin) - (scalePtr->inset + rightPad + PADX);
 
-    y = scalePtr->inset + PADY;
+    y = scalePtr->inset + 2 * PADY;
     if (scalePtr->flags & SHOW_TITLE) {
         y += scalePtr->titleHeight + PADY;
     }
@@ -3938,16 +3937,48 @@ DestroyScale(Scale *scalePtr)
 {
     Blt_FreeOptions(configSpecs, (char *)scalePtr, scalePtr->display, 0);
     Blt_DestroyBindingTable(scalePtr->bindTable);
+
     if (scalePtr->tickGC != NULL) {
         Tk_FreeGC(scalePtr->display, scalePtr->tickGC);
     }
     if (scalePtr->disabledTickGC != NULL) {
         Tk_FreeGC(scalePtr->display, scalePtr->disabledTickGC);
     }
+    if (scalePtr->disabledGC != NULL) {
+        Tk_FreeGC(scalePtr->display, scalePtr->disabledGC);
+    }
+    if (scalePtr->axisLineGC != NULL) {
+        Tk_FreeGC(scalePtr->display, scalePtr->axisLineGC);
+    }
+    if (scalePtr->rangeGC != NULL) {
+        Tk_FreeGC(scalePtr->display, scalePtr->rangeGC);
+    }
     FreeTickLabels(scalePtr->tickLabels);
     Blt_Chain_Destroy(scalePtr->tickLabels);
+
     if (scalePtr->tickSegments != NULL) {
         Blt_Free(scalePtr->tickSegments);
+    }
+    if (scalePtr->colorbar.picture != NULL) {
+        Blt_FreePicture(scalePtr->colorbar.picture);
+    }
+    if (scalePtr->activeMaxArrow != NULL) {
+        Blt_FreePicture(scalePtr->activeMaxArrow);
+    }
+    if (scalePtr->activeMinArrow != NULL) {
+        Blt_FreePicture(scalePtr->activeMinArrow);
+    }
+    if (scalePtr->normalMaxArrow != NULL) {
+        Blt_FreePicture(scalePtr->normalMaxArrow);
+    }
+    if (scalePtr->normalMinArrow != NULL) {
+        Blt_FreePicture(scalePtr->normalMinArrow);
+    }
+    if (scalePtr->disabledMaxArrow != NULL) {
+        Blt_FreePicture(scalePtr->disabledMaxArrow);
+    }
+    if (scalePtr->disabledMinArrow != NULL) {
+        Blt_FreePicture(scalePtr->disabledMinArrow);
     }
     Blt_Free(scalePtr);
 }
@@ -4273,6 +4304,9 @@ ConfigureScale(
         scalePtr->outerLeft = 1.0;
         scalePtr->outerRight = scalePtr->outerRight + delta;
     }
+    if (scalePtr->outerLeft == scalePtr->outerRight) {
+        scalePtr->outerRight = scalePtr->outerLeft + 1.0;
+    }
     /* If no range min and max is set, use the data range values. */
     scalePtr->innerLeft = (DEFINED(scalePtr->reqInnerLeft))
         ? scalePtr->reqInnerLeft : scalePtr->outerLeft;
@@ -4360,7 +4394,12 @@ ConfigureScale(
                 scalePtr);
     }
     ResetGCs(scalePtr);
-
+    if (Blt_ConfigModified(configSpecs, "-palette", "-orient")) {
+        if (scalePtr->colorbar.picture != NULL) {
+            Blt_FreePicture(scalePtr->colorbar.picture);
+            scalePtr->colorbar.picture = NULL;
+        }
+    }
     scalePtr->titleWidth = scalePtr->titleHeight = 0;
     if (scalePtr->title != NULL) {
         unsigned int w, h;
@@ -4540,7 +4579,7 @@ MapHorizontalScale(Scale *scalePtr)
 {
     int y, ytop;
 
-    y = scalePtr->inset + PADY;
+    y = scalePtr->inset + 2 * PADY;
     if (scalePtr->flags & SHOW_TITLE) {
         scalePtr->titleY = y;
         switch (scalePtr->titleJustify) {
@@ -4807,24 +4846,32 @@ ColorbarToPicture(Scale *scalePtr, int w, int h)
 static void
 DrawColorbar(Scale *scalePtr, Drawable drawable)
 {
+    Colorbar *c;
+    
     if (scalePtr->palette == NULL) {
         return;                         /* No palette defined. */
     }
-    if ((scalePtr->colorbar.width > 0) && (scalePtr->colorbar.height > 0)) {
-        Blt_Picture picture;
+    c = &scalePtr->colorbar;
+    if ((c->width > 0) && (c->height > 0)) {
+        if ((c->picture == NULL) ||
+            (Blt_Picture_Width(c->picture) != c->width) ||
+            (Blt_Picture_Height(c->picture) != c->height)) {
+            Blt_Picture picture;
 
-        picture = ColorbarToPicture(scalePtr, scalePtr->colorbar.width, 
-                                    scalePtr->colorbar.height);
-        if (picture == NULL) {
-            return;                         /* Background is obscured. */
+            picture = ColorbarToPicture(scalePtr, c->width, c->height);
+            if (picture == NULL) {
+                return;                 /* Background is obscured. */
+            }
+            if (c->picture != NULL) {
+                Blt_FreePicture(c->picture);
+            }
+            c->picture = picture;
         }
-        Blt_PaintPicture(scalePtr->painter, drawable, picture, 0, 0, 
-                         scalePtr->colorbar.width, scalePtr->colorbar.height, 
-                         scalePtr->colorbar.x, scalePtr->colorbar.y, 0);
-        Blt_FreePicture(picture);
+        Blt_PaintPicture(scalePtr->painter, drawable, c->picture, 0, 0, 
+              c->width, c->height, c->x, c->y, 0);
     } else {
         fprintf(stderr, "cbw=%d cbh=%d w=%d h=%d rw=%d rh=%d\n",
-                scalePtr->colorbar.width, scalePtr->colorbar.height,
+                c->width, c->height,
                 Tk_Width(scalePtr->tkwin), Tk_Height(scalePtr->tkwin),
                 Tk_ReqWidth(scalePtr->tkwin), Tk_ReqHeight(scalePtr->tkwin));
     }
@@ -5329,19 +5376,19 @@ ActivateOp(ClientData clientData, Tcl_Interp *interp, int objc,
  *    A standard TCL result.  The interpreter result will contain the name of
  *    the axis.
  *
- *      pathName bbox min|max|mark|rmin|rmax| ?switches?
+ *      pathName bbox minarrow|maxarrow|value|title|colorbar ?switches?
  *
  *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 static int
-BboxOp(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
+BboxOp(ClientData clientData, Tcl_Interp *interp, int objc,
+       Tcl_Obj *const *objv)
 {
     Scale *scalePtr = clientData;
     Tcl_Obj *listObjPtr;
     char c;
     const char *string;
-    double value;
     int length;
     int x1, y1, x2, y2;
     BBoxSwitches switches;
@@ -5349,27 +5396,62 @@ BboxOp(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv
     string = Tcl_GetStringFromObj(objv[2], &length);
     c = string[0];
     x1 = y1 = x2 = y2 = 0;
-    if ((c == 'v') && (length > 1) &&
-        (strncmp(string, "value", length) == 0)) {
+    if ((c == 'v') && (strncmp(string, "value", length) == 0)) {
         x1 = scalePtr->valuePtr->x;
         y1 = scalePtr->valuePtr->y;
         x2 = x1 + scalePtr->valuePtr->width;
         y2 = y1 + scalePtr->valuePtr->height;
     } else if ((c == 'm') && (length > 2) &&
-               (strncmp(string, "max", length) == 0)) {
-        value = scalePtr->outerRight;
+               (strncmp(string, "maxarrow", length) == 0)) {
+        if (HORIZONTAL(scalePtr)) {
+            int x;
+            
+            x = HMap(scalePtr, scalePtr->innerRight);
+            x1 = x - scalePtr->arrowWidth / 2;
+            y1 = scalePtr->y1 - scalePtr->arrowHeight;
+            x2 = x + scalePtr->arrowWidth / 2;
+            y2 = scalePtr->y1;
+        } else {
+            int y;
+            
+            y = VMap(scalePtr, scalePtr->innerRight);
+            y1 = y - scalePtr->arrowWidth / 2;
+            x1 = scalePtr->x1 - scalePtr->arrowHeight;
+            y2 = y + scalePtr->arrowWidth / 2;
+            x2 = scalePtr->x1;
+        }
     } else if ((c == 'r') && (length > 2) &&
-               (strncmp(string, "rmin", length) == 0)) {
-        value = scalePtr->innerLeft;
-    } else if ((c == 'r') && (length > 2) &&
-               (strncmp(string, "rmax", length) == 0)) {
-        value = scalePtr->innerRight;
-    } else if ((c == 'm') && (length > 2) &&
-               (strncmp(string, "mark", length) == 0)) {
-        value = scalePtr->mark;
+               (strncmp(string, "minarrow", length) == 0)) {
+        if (HORIZONTAL(scalePtr)) {
+            int x;
+            
+            x = HMap(scalePtr, scalePtr->innerLeft);
+            x1 = x - scalePtr->arrowWidth / 2;
+            y1 = scalePtr->y2;
+            x2 = x + scalePtr->arrowWidth / 2;
+            y2 = scalePtr->y2 + scalePtr->arrowHeight;
+        } else {
+            int y;
+            
+            y = VMap(scalePtr, scalePtr->innerLeft);
+            y1 = y - scalePtr->arrowWidth / 2;
+            x1 = scalePtr->x2;
+            y2 = y + scalePtr->arrowWidth / 2;
+            x2 = scalePtr->x2 + scalePtr->arrowHeight;
+        }
+    } else if ((c == 't') && (strncmp(string, "title", length) == 0)) {
+        x1 = scalePtr->titleX;
+        y1 = scalePtr->titleY;
+        x2 = scalePtr->titleX + scalePtr->titleWidth;
+        y2 = scalePtr->titleY + scalePtr->titleHeight;
+    } else if ((c == 'c') && (strncmp(string, "colorbar", length) == 0)) {
+        x1 = scalePtr->colorbar.x;
+        y2 = scalePtr->colorbar.y;
+        x2 = scalePtr->colorbar.x + scalePtr->colorbar.width;
+        y2 = scalePtr->colorbar.y + scalePtr->colorbar.height;
     } else {
         Tcl_AppendResult(interp, "unknown scale part \"", string, 
-                         "\": should be max, min, rmin, rmax, or mark.", 
+             "\": should be colorbar, maxarrow, minarrow, title, or value.", 
                          (char *)NULL);
         return TCL_ERROR;
     }
@@ -5743,8 +5825,24 @@ SetOp(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 {
     Scale *scalePtr = clientData;
     double mark;
-    
-    if (Blt_GetDoubleFromObj(interp, objv[2], &mark) != TCL_OK) {
+    const char *string;
+    int length;
+    char c;
+
+    string = Tcl_GetStringFromObj(objv[2], &length);
+    c = string[0];
+    if ((c == 'r') && (length > 2) && (strncmp(string, "rmin", length) == 0)) {
+        mark = scalePtr->innerLeft;
+    } else if ((c == 'r') && (length > 2) &&
+               (strncmp(string, "rmax", length) == 0)) {
+        mark = scalePtr->innerRight;
+    } else if ((c == 'm') && (length > 1) &&
+               (strncmp(string, "min", length) == 0)) {
+        mark = scalePtr->outerLeft;
+    } else if ((c == 'm') && (length > 1) &&
+               (strncmp(string, "max", length) == 0)) {
+        mark = scalePtr->outerRight;
+    } else if (Blt_GetDoubleFromObj(interp, objv[2], &mark) != TCL_OK) {
         return TCL_ERROR;
     }
     if (scalePtr->flags & DISABLED) {
