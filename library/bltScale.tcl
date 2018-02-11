@@ -86,10 +86,10 @@ bind BltScale <KeyPress-Up> {
     }
 }
 bind BltScale <KeyPress-Home> {
-    %W set [%W get rmin]
+    %W set rmin
 }
 bind BltScale <KeyPress-End> {
-    %W set [%W get rmax]
+    %W set rmax
 }
 
 # ----------------------------------------------------------------------
