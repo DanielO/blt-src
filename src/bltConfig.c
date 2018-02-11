@@ -2317,7 +2317,6 @@ Blt_ConfigureComponentFromObj(
     int result;
     char *tmpName;
     Tcl_Obj *nameObjPtr;
-    Display *display;
     Tk_Uid nameUid;
 
     nameObjPtr = Tcl_NewStringObj("bltConfigureComponent", -1);
@@ -2329,7 +2328,6 @@ Blt_ConfigureComponentFromObj(
      * Create a child window by name "bltConfigureComponent". If one
      * already exists, create a temporary name (how?).
      */
-    display = Tk_Display(parent);
     tkwin = Blt_FindChild(parent, tmpName);
     if (tkwin != NULL) {
         Tcl_AppendToObj(nameObjPtr, "-temp", 5);

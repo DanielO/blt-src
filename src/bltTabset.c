@@ -5183,7 +5183,7 @@ BboxOp(ClientData clientData, Tcl_Interp *interp, int objc,
         x2 += rootX, y2 += rootY;
     }
     if (tabPtr->flags & VISIBLE) {
-        Tcl_Obj *listObjPtr, *objPtr;
+        Tcl_Obj *listObjPtr;
         
         listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **)NULL);
         Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewIntObj(x1));
