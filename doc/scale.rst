@@ -52,21 +52,29 @@ distinct widgets; the entire *scale* is one widget.
 The scale is composed of the following parts: 
 
 **axis**
-
+	A rectangle representing the axis line of the scale.
+	
 **colorbar**
-
+	A gradient color bar displayed along side the axis.
+	
 **grip**
-
+	A 3D rectangle use to move the mark.
+	
 **mark**
-
+	A thin rectangle displaying the current value of the scale.
+	
 **maxarrow**
+	A triangle representing the minimum value of the inner range. 
 
 **minarrow**
+	A triangle representing the maximum value of the inner range. 
 
 **title**
+	Text displayed at the top of the scale.
 
 **value**
-
+	Text of the current value value displayed next to the mark.
+	
 OPERATIONS
 ----------
 
@@ -85,18 +93,29 @@ command.  The following operations are available for *scale* widgets:
   over parts of the scale.  *PartName* must be one of the following.
 
   **grip**
+	Activates the grip.  The grip is redrawn in its active
+	background color and relief. See the **-activegripbackground**
+	option.
 
   **maxarrow**
+	Activates the arrow representing the range maximum.  The arrow is
+	redrawn in its active color. See the **-activemaxarrowcolor**
+	option.
 
   **minarrow**
+	Activates the arrow representing the range minimum.  The arrow is
+	redrawn in its active color. See the **-activeminarrowcolor**
+	option.
 
   **value**
+	Activates the text displaying the current value of the scale.  The
+	text is redrawn in its active foreground and background colors. See
+	the **-activevaluebackground** and **-activevalueforeground**
+	options.
 
 *pathName* **bbox** *partName*  ?\ *switches* ... ?
-  Returns the bounding box of *partName*.  *PartName* must be one of the
-  following.
-
-  **value**
+  Returns the bounding box of *partName*.  *PartName* must be **colorbar**,
+  **grip**, **maxarrow**, **minarrow**, or **value**.
 
   This command returns a list of 4 numbers that represent the coordinates
   of the upper-left and lower-right corners of the bounding box of the
@@ -114,23 +133,8 @@ command.  The following operations are available for *scale* widgets:
   entry for complete details on *sequence* and the substitutions performed
   on *cmdString*.
 
-  *PartName* must be one of the following.
-
-  **axis**
-
-  **colorbar**
-
-  **grip**
-
-  **mark**
-
-  **maxarrow**
-
-  **minarrow**
-
-  **title**
-
-  **value**
+  *PartName* must be **axis**, **colorbar**, **grip**, **mark**,
+  **maxarrow**, **minarrow**, **title** or **value**.
 
   If all arguments are specified then a new binding is created, replacing
   any existing binding for the same *sequence* and *partName*.  If the first
@@ -168,58 +172,81 @@ command.  The following operations are available for *scale* widgets:
 
   The following widget options are available\:
 
-  **-activebackground** *bgName** 
+  **-activebackground** *bgName*
+    Specifies the background color of *pathName* when it is active.
+    *bgName** may be a color name or the name of a background object
+    created by the **blt::background** command.  The default is "grey90".
+
+  **-activegripbackground** *bgName*
+    Specifies the background color of the scale's grip when it is active.
+    *bgName** may be a color name or the name of a background object
+    created by the **blt::background** command.  The default is "grey90".
+
+  **-activemaxarrowcolor** *colorSpec*
+    Specifies the background color of the arrow representing scale's
+    maximum range when it is active.  *ColorSpec** is be a color name or
+    pixel value. The default is "grey90".
+
+  **-activeminarrowcolor** *colorSpec*
+    Specifies the background color of the arrow representing scale's
+    minimum range when it is active.  *ColorSpec** is be a color name or
+    pixel value. The default is "grey90".
+
+  **-activegripbackground** *bgName* 
     Specifies the background color of *pathName* when it is active.
     *bgName** may be a color name or the name of a background object
     created by the **blt::background** command.  The default is "white".
 
-  **-activeforeground** *colorName* 
-    Specifies the color of the text when *pathName* is active.  The
-    default is "black".
-
-  **-activegripbackground** *bgName** 
-    Specifies the background color of *pathName* when it is active.
-    *bgName** may be a color name or the name of a background object
+  **-activerelief** *reliefName* 
+    Specifies the relief color of *pathName* when it's state is active.
+    This determines the 3-D effect for the widget.  *ReliefName* indicates
+    how the widget should appear relative its background. Acceptable
+    values are **raised**, **sunken**, **flat**, **ridge**, **solid**, and
+    **groove**. For example, "raised" means the scale should appear to
+    protrude.  The default is "raised".
+    
+  **-activevaluebackground** *bgName*
+    Specifies the background color of the scale's value when it is active.
+    *BgName** may be a color name or the name of a background object
     created by the **blt::background** command.  The default is "white".
+
+  **-activevalueforeground** *colorName*
+    Specifies the color of the text displaying the current value when it
+    is active. *ColorName** is be a color name.  The default is "black".
+
+  **-axislinecolor** *colorName*
+    Specifies the color of the rectangle for the scale's axis.
+    *ColorName** is be a color name.  The default is "grey30".
+
+  **-axislinewidth** *numPixels* 
+    Specifies the width of the line for the scale's axis.  *NumPixels* is a
+    non-negative value indicating the axis.  *NumPixels* may have any of
+    the forms acceptable to **Tk_GetPixels**.  The default is "0.03i".
 
   **-arrowon** *boolean* 
     Indicates if an arrow is to be displayed on the right side of the text.
     The default is "0".
 
-  **-arrowborderwidth** *numPixels* 
-    Specifies the borderwidth of the arrow.  *NumPixels* is a non-negative
-    value indicating the width of the 3-D border drawn around the menu.
-    *NumPixels* may have any of the forms acceptable to **Tk_GetPixels**.
-    The default is "1".
-
-  **-arrowrelief** *reliefName* 
-    Specifies the relief of the arrow.  This determines the 3-D effect for
-    the arrow.  *ReliefName* indicates how the arrow should appear relative
-    to the scale window. Acceptable values are **raised**,
-    **sunken**, **flat**, **ridge**, **solid**, and **groove**. For
-    example, "raised" means the arrow should appear to protrude.  The
-    default is "raised".
-    
-  **-arrowwidth** *numPixels* 
-    Specifies the width of the arrow.  *NumPixels* is a non-negative value
-    and may have any of the forms acceptable to **Tk_GetPixels**.
-    If *numPixels* is "0", the width of the arrow is determined from the
-    size of the font (see the **-font** option) The default is "0".
-
-  **-background** *bgName** 
-    Specifies the background color of *pathName*.  *bgName** may be a
+  **-background** *bgName* 
+    Specifies the background color of *pathName*.  *BgName** may be a
     color name or the name of a background object created by the
-    **blt::background** command.  The default is "white".
+    **blt::background** command.  The default is "grey85".
     
   **-borderwidth** *numPixels* 
     Specifies the borderwidth of *pathName*.  *NumPixels* is a non-negative
-    value indicating the width of the 3-D border drawn around the button.
+    value indicating the width of the 3-D border drawn around the widget.
     *NumPixels* may have any of the forms acceptable to **Tk_GetPixels**.
-    The default is "1".
+    The default is "2".
+
+  **-colorbarthickness** *numPixels* 
+    Specifies the colorbar of *pathName*.  *NumPixels* is a non-negative
+    value indicating the width of the color bar drawn aside the axis.
+    *NumPixels* may have any of the forms acceptable to **Tk_GetPixels**.
+    The default is "0.15i".
 
   **-command** *string* 
-    Specifies a TCL command to be executed when a button is invoked:
-    either by clicking on the menu item or using the **invoke** operation.
+    Specifies a TCL command to be executed when the current value is changed.
+    This typically done moving the grip or using the **set** operation.
     If *string* is "", then no command is invoked. The default is "".
 
   **-cursor** *cursorName* 
@@ -228,33 +255,77 @@ command.  The following operations are available for *scale* widgets:
     this indicates that the widget should defer to its parent for cursor
     specification.  The default is "".
 
+  **-cursor** *cursorName* 
+    Specifies the cursor to be used for the widget. *CursorName* may have
+    any of the forms acceptable to **Tk_GetCursor**.  If *cursorName* is "",
+    this indicates that the widget should defer to its parent for cursor
+    specification.  The default is "".
+
+  **-decreasing** *boolean*
+    Indicates whether the values along the axis are monotonically
+    increasing or decreasing.  If *boolean* is true the axis values will be
+    decreasing.  The default is "0".
+
   **-disabledbackground** *bgName* 
     Specifies the background of *pathName* when it is disabled.  *BgName*
     may be a color name or the name of a background object created by the
-    **blt::background** command.  The default is "white".
+    **blt::background** command.  The default is "grey90".
 
   **-disabledforeground** *colorName* 
-    Specifies the color of the text when *pathName* is disabled.  The
+    Specifies the color of the scale when *pathName* is disabled.  The
     default is "grey70".
 
-  **-font** *fontName* 
-    Specifies the font of the text.  The default is "{Sans Serif} 11".
+  **-divisions** *numMajorTicks*
+    Specifies the number of major ticks to be displayed.
 
-  **-foreground** *colorName* 
-    Specifies the color of the text.  The default is "black".
+  **-formatcommand** *cmdPrefix*
+    Specifies a TCL command to be invoked when formatting the axis tick
+    labels. *CmdPrefix* is a string containing the name of a TCL proc and
+    any extra arguments for the procedure.  This command is invoked for
+    each major tick on the axis.  Two additional arguments are passed to
+    the procedure: the *pathName* and the current the numeric value of the
+    tick.  The procedure returns the formatted tick label.  If "" is
+    returned, no label will appear next to the tick.  You can get the
+    standard tick labels again by setting *cmdPrefix* to "".  The default
+    is "".
+
+  **-gripbackground** *bgName*
+    Specifies the normal background color of the scale's grip.
+    *BgName** may be a color name or the name of a background object
+    created by the **blt::background** command.  The default is "grey85".
+
+  **-gripborderwidth** *numPixels* 
+    Specifies the borderwidth of the grip.  *NumPixels* is a non-negative
+    value indicating the width of the 3-D border drawn around the grip.
+    *NumPixels* may have any of the forms acceptable to **Tk_GetPixels**.
+    The default is "2".
+
+  **-griprelief** *reliefName*
+    Specifies the relief color of the scale's grip.  This determines the
+    3-D effect for the grip.  *ReliefName* indicates how the grip should
+    appear relative *pathName*. Acceptable values are **raised**,
+    **sunken**, **flat**, **ridge**, **solid**, and **groove**. For
+    example, "raised" means the grip should appear to protrude.  The
+    default is "raised".
 
   **-height** *numPixels* 
     Specifies the height of the widget.  *NumPixels* is a non-negative
     value indicating the height of *pathName* in pixels.  It may have any of
     the forms accept able to **Tk_GetPixels**, such as "200" or "2.4i".  If
     *numPixels* is 0, then the height is computed from the size of the
-    text. The default is "0".
+    scale. The default is "0".
 
-  **-highlightbackground** *BgName*
-    Specifies the color of the traversal highlight region when the
-    graph does not have the input focus.  *BgName* may be a color name
-    or the name of a background object created by the **blt::background**
-    command.  The default is "grey85".
+  **-hide** *partsList* 
+    Specifies the parts named in *partsList* are hidden.  *PartsList* is a
+    TCL list of part names.  Parts not listed are unaffected.  Use the
+    **-show** option to display parts.
+    The default is "".
+
+  **-highlightbackground** *bgName*
+    Specifies the color of the traversal highlight region when *pathName*
+    does not have the input focus.  *BgName* may be a color name or the
+    name of a background object created by the **blt::background** command.
+    The default is "grey85".
 
   **-highlightcolor** *bgName*
     Specifies the color of the traversal highlight region when *pathName*
@@ -266,58 +337,65 @@ command.  The following operations are available for *scale* widgets:
     Specifies a non-negative value for the width of the highlight rectangle
     to drawn around the outside of the widget.  *NumPixels* may have any of
     the forms acceptable to **Tk_GetPixels**.  If *numPixels* is "0", no
-    focus highlight is drawn around the widget.  The default is "2".
+    focus highlight is drawn around the widget.  The default is "0".
 
-  **-icon** *imageName* 
+  **-labeloffset** *boolean* 
+
+  **-loose** *boolean*
+    Indicates whether the limits of the axis should fit the data points
+    tightly, at the outermost data points, or loosely, at the outer tick
+    intervals.  If the axis limit is set with the -min or -max option, the
+    axes are displayed tightly.  If *boolean* is true, the axis range is
+    "loose".  The default is "0".
+
+  **-majorticks** *tickList*
+    Specifies where to display major axis ticks.  You can use this option
+    to display ticks at non-uniform intervals.  *TickList* is a list of
+    coordinates along the axis designating where major ticks will be drawn.
+    No minor ticks are drawn.  If *tickList* is "", major ticks will be
+    automatically computed. The default is "".
+
+  **-max** *maxValue*
+    Specifies the maximum limit of *axisName*, clipping elements using
+    *axisName*.  Any data point greater than *maxValue* is not displayed.
+    If *maxValue* is "", the maximum limit is calculated using the largest
+    value of all the elements mapped to *axisName*.  The default is "".
+
+  **-min** *minValue*
+    Specifies the minimum limit of *axisName*, clipping elements using
+    *axisName*. Any data point less than *minValue* is not displayed.  If
+    *minValue* is "", the minimum limit is calculated using the smallest
+    value of all the elements mapped to *axisName*.  The default is "".
+
+  **-minorticks** *tickList*
+    Specifies where to display minor axis ticks.  You can use this option
+    to display minor ticks at non-uniform intervals. *TickList* is a list
+    of real values, ranging from 0.0 to 1.0, designating the placement of a
+    minor tick.  No minor ticks are drawn if the **-majortick** option is
+    also set.  If *tickList* is "" then the minor ticks are automatically
+    computed. The default is "".
+
 
     Specifies an image to be displayed as an icon on the left of the text
     in *pathName*.  *ImageName* is the name of an Tk photo or BLT picture.
     If *imageName* is "", no icon is displayed. The default is "".
 
-  **-iconvariable** *varName* 
-    Specifies the name of a global TCL variable that will be set to the
-    name of the image representing the icon.  If *varName* is set to
-    another image name, the icon in *pathName* will change accordingly.  If
-    *varName* is "", no variable is used. The default is "".
+  **-palette** *paletteName*
+    FIXME
 
-  **-image** *imageName* 
-    Specifies the name of a global TCL variable that will be set to the
-    name of the image representing the icon of *pathName*.  If *varName* is
-    "", no variable is used. The default is "".
+  **-rangecolor** *colorName*
+    Specifies the color of the rectangle for the scale's axis.
+    *ColorName** is be a color name.  The default is "grey30".
 
-  **-justify**  *justifyName*
-    Specifies how the text should be justified.  This matters only when the
-    button contains more than one line of text. *JustifyName* must be
-    "left", "right", or "center".  The default is "center".
+  **-rangemax** *maxValue*
+    Specifies the maximum limit of the range.  The current value of the
+    scale can not be greater that this value.  If *maxValue* is "", the
+    maximum of the scale (see the **-max** option).  The default is "".
 
-  **-menu** *menuName* 
-    Specifies the path name of the menu associated with this scale.
-    *MenuName* must be a **blt::combomenu** widget and a child of
-    *pathName*.  If *menuName* is "", no menu will be displayed. The
-    default is "".
-
-  **-postcommand** *cmdString* 
-    Specifies a TCL command to invoked when the menu is posted.  The
-    command will be invoked before the menu is displayed onscreen.  For
-    example, this may be used to disable buttons that may not be valid
-    when the menu is posted. If *cmdString* is "", no command is invoked.
-    The default is "".
-
-  **-postedbackground** *bgName*
-    Specifies the background color of *pathName* when its menu is posted.
-    *BgName* may be a color name or the name of a background object
-    created by the **blt::background** command. The default is "skyblue4".
-
-  **-postedforeground** *colorName*
-    Specifies the text color when *pathName* when its menu is posted.  The
-    default is "white".
-
-  **-postedrelief**  *reliefName*
-    Specifies the 3-D effect for *pathName* when its menu is posted.
-    *ReliefName* indicates how *pathName* should appear relative to the
-    window it's packed into. Acceptable values are **raised**, **sunken**,
-    **flat**, **ridge**, **solid**, and **groove**. For example, "raised"
-    means the button should appear to protrude.  The default is "sunken".
+  **-rangemin** *minValue*
+    Specifies the minimum limit of the range.  The current value of the
+    scale can not be less that this value.  If *minValue* is "", the
+    minximum of the scale (see the **-min** option).  The default is "".
 
   **-relief** *reliefName* 
     Specifies the 3-D effect for *pathName*.  *ReliefName* indicates how
@@ -326,25 +404,63 @@ command.  The following operations are available for *scale* widgets:
     **ridge**, **solid**, and **groove**. For example, "raised" means
     *pathName* should appear to protrude.  The default is "raised".
 
+  **-resolution** *value* 
+    Specifies the resolution for the scale.  *Value* is a real number.  If
+    this value is greater than 0 then the scale's value will always be
+    rounded to an even multiple of this value, as will the minimum and
+    maximum values of the range.  If the value is 0 or less, then no
+    rounding occurs.  The default is "0".
+
+  **-scale** *scaleValue*
+    Specifies the scale of *axisName*. *ScaleValue* can be one of the
+    following.
+
+    **linear**
+      Indicates that the scale of the axis is linear.  
+
+    **log**
+      Indicates that the scale of the axis is logarithmic.  
+
+    **time**
+      Indicates that the axis scale is time.  The data values on the axis
+      are in assumed to be in seconds.  The tick values will be in
+      displayed in a date or time format (years, months, days, hours,
+      minutes, or seconds).
+
+  **-show** *partsList* 
+    Specifies the parts named in *partsList* are displayed.  *PartsList* is
+    a TCL list of part names.  Parts not listed are unaffected.  Use the
+    **-hide** option to hide parts.  The default is "".
+
   **-state** *stateName*
     Specifies one of three states for *pathName*: 
+
+    **active**
+      The scale associated with *pathName* is active.  *pathName* is
+      displayed according to the **-activeforeground**, the
+      **-activebackground**, and **-activerelief** options.
+
+    **disabled**
+      Disabled state means that *pathName* should be insensitive: the
+      default bindings will not activate or invoke the scale.  In this
+      state *pathName* is displayed according to the
+      **-disabledforeground** and the **-disabledbackground** options.
 
     **normal**
       In normal state *pathName* is displayed using the **-foreground**
       **-background**, and **-relief**  options.
 
-    **disabled**
-      Disabled state means that *pathName* should be insensitive: the default
-      bindings will not activate or invoke the item.  In this state
-      *pathName* is displayed according to the **-disabledforeground** and
-      the **-disabledbackground** options.
-
-    **posted**
-      The menu associated with *pathName* is posted.
-      *pathName* is displayed according to the **-postedforeground**,
-      the **-postedbackground**, and **-postrelief**  options.
-
     The default is "normal".
+
+  **-stepsize** *stepValue*
+    Specifies the interval between major axis ticks.  If *stepValue* isn't
+    a valid interval (it must be less than the axis range), the request is
+    ignored and the step size is automatically calculated.
+
+  **-subdivisions** *numDivisions*
+    Indicates how many minor axis ticks are to be drawn.  For example, if
+    *numDivisons* is two, only one minor tick is drawn.  If *numDivisions*
+    is one, no minor ticks are displayed.  The default is "2".
 
   **-takefocus** *boolean*
     Provides information used when moving the focus from window to window
@@ -354,25 +470,76 @@ command.  The following operations are available for *scale* widgets:
     input focus.  An empty value means that the traversal scripts make the
     decision whether to focus on the window.  The default is "".
 
-  **-text** *textString* 
-    Specifies the text to be displayed in *pathName*. If *textString* is not
-    "", this option overrides the **-textvariable** option.  The default is
-    "".
+  **-tickangle** *numDegrees*
+    Specifies the how many degrees to rotate the tick labels.  *NumDegrees*
+    is a real value representing the number of degrees to rotate the tick
+    labels.  The default is "0.0".
 
-  **-textvariable** *varName* 
+  **-tickcolor** *colorName* 
+    Specifies the color of the tick lines.  *ColorName** is be a color
+    name.  The default is "black".
+
+  **-tickdirection** *direction*
+    Indicates whether the ticks are interior to the colorbar or exterior.
+    *Direction* can be any of the following.
+    
+    **in**
+      The ticks extend from the axis line into the colorbar.
+    **out**
+      The ticks extend away from the axis and colorbar.
+
+    The default is "out".
+    
+  **-tickfont** *fontName*
+    Specifies the font for tick labels. The default is "{Sans Serif} 9".
+
+  **-ticklabelcolor** *colorName* 
+    Specifies the color of the tick labels.  *ColorName** is be a color
+    name.  The default is "black".
+
+  **-ticklength** *numPixels*
+    Specifies the length of major and minor ticks (minor ticks are 2/3 the
+    length of major ticks). *NumPixels* may have any of the forms
+    acceptable to **Tk_GetPixels**. The default is "8".
+
+  **-ticklinewidth** *numPixels*
+    Specifies the width of major and minor tick lines.  *NumPixels* may
+    have any of the forms acceptable to **Tk_GetPixels**. The default is
+    "1".
+
+  **-title** *titleString*
+    Specifies the title of *pathName*. If *titleString* is "", no title
+    will be displayed.  The default is the "".
+
+  **-titlecolor** *colorName*
+    Specifies the color of the axis title. The default is "black".
+
+  **-titlefont** *fontName*
+    Specifies the font for axis title. The default is "{Sans Serif} 9".
+
+  **-titlejustify**  *justifyName*
+    Specifies how the title should be justified.  This matters only when
+    the title is shorter than the width of *pathName*. *JustifyName* must
+    be "left", "right", or "center".  The default is "center".
+
+  **-valueangle** *numDegrees* 
+    Specifies the how many degrees to rotate the value text.  *NumDegrees*
+    is a real value representing the number of degrees to rotate the 
+    text.  The default is "0.0".
+
+  **-valuecolor** *colorName* 
+    Specifies the color of the text displaying the current value.
+    *ColorName** is be a color name.  The default is "black".
+
+  **-valuefont** *fontName* 
+    Specifies the font for the text displaying the current value. The
+    default is "{Sans Serif} 6".
+
+  **-variable** *varName* 
     Specifies the name of a global TCL variable that will be set to the
-    text of *pathName*.  If *varName* is set to another value, the text in
-    *pathName* will change accordingly. If *varName* is "", no variable is
-    used. The default is "".
-
-  **-underline** *charIndex*
-    Specifies the index of the character to be underlined when displaying
-    *pathName*.  In addition the underlined character is used in the
-    *scale* widget's bindings.  When the key associated with the
-    underlined character is pressed, the button is invoked.  *CharIndex* is
-    the index of the character in the text, starting from zero.  If
-    *charIndex* is not a valid index, no character is underlined. The
-    default is -1.
+    current value of *pathName*.  If *varName* is set to another value, the
+    current value in *pathName* will change accordingly. If *varName* is
+    "", no variable is used. The default is "".
 
   **-width** *numPixels*
    Specifies the width of the widget*.  *NumPixels* is a non-negative value
@@ -386,16 +553,46 @@ command.  The following operations are available for *scale* widgets:
   widget bindings to un-highlight *pathName* as the pointer is 
   moved away from the button.
 
-*pathName* **invoke** 
-  Invokes the TCL command specified by the **-command** option. 
+*pathName* **get** *partName* *value*
+  Gets the value of *partName*.  **PartName** may be **mark**,
+  **maxarrow**, or **minarrow**.
   
-*pathName* **post** 
-  Posts the menu associated with the widget (see the **-menu** option)
-  to be displayed on the screen. The menu is displayed underneath
-  the scale window.
+*pathName* **identify**  *x* *y*  ?\ *switches* ... ?
+  Returns the name of the part under the point given by *x* and *y* (such
+  as **grip** or **minarrow**), or an empty string if the point does not
+  lie in any part of the scale.  *X* and *y* are screen coordinates
+  relative to the scale widget.  *Switches* may be any of the following.
 
-*pathName* **unpost**
-  Unposts the *scale* window so it is no longer displayed onscreen.  
+  **-root**
+    Indicates that *x* and *y* are root coordinates.  By default *x* and
+    *y* are considered relative to the upper-left corner of *pathName*.
+
+*pathName* **invtransform**  *x* *y*
+  Transforms screen coordinates into a scale value.  *X* and *y* are
+  integers representing a coordinate on the screen.  Returns a number
+  representing the scale value at that coordinate.
+  
+*pathName* **limits** 
+  Returns a list of the minimum and maximum values for *pathName*.  
+  
+*pathName* **set** *valueName*
+  Invokes the TCL command specified by the **-command** option. 
+
+*pathName* **set** *valueName*
+  Sets the current value of the scale. *ValueName* is a real number or
+  one of the following.
+
+  **maxarrow**
+    Set the current value to the range maximum.
+
+  **minarrow**
+    Set the current value to the range minumum.
+
+*pathName* **transform** *value* 
+  Transforms scale coordinate into a X or Y screen coordinates.  *Value* is
+  a double precision number representing a value on the scale.  Returns a
+  the X or Y screen coordinate, depending upon the orientation of the scale
+  (see the **-orient** option).
 
 DEFAULT BINDINGS
 ----------------
@@ -478,16 +675,6 @@ Please note the following:
 3. You can't use a Tk **menu** with *scale* widgets.  The menu must
    be a **blt::combomenu** widget.
 
-DIFFERENCES WITH TK MENUBUTTONS
--------------------------------
-
-The **blt::scale** widget has the following differences with the Tk
-**menubutton** widget.
-
-1. *Scales* can not post by a Tk **menu**, only a BLT **combomenu**
-    widget.
-
-   
 KEYWORDS
 --------
 
@@ -513,6 +700,7 @@ met:
  4) Products derived from this software may not be called "BLT" nor may
     "BLT" appear in their names without specific prior written permission
     from the author.
+
 
 THIS SOFTWARE IS PROVIDED ''AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES,
 INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY

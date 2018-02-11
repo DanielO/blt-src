@@ -49,6 +49,7 @@ SRC = 		$(srcdir)/BLT.rst \
 		$(srcdir)/palette.rst \
 		$(srcdir)/paneset.rst \
 		$(srcdir)/picture.rst \
+		$(srcdir)/scale.rst \
 		$(srcdir)/scrollbar.rst \
 		$(srcdir)/scrollset.rst \
 		$(srcdir)/sftp.rst \

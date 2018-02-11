@@ -493,7 +493,7 @@ GRAPH OPERATIONS
     graph. The default is "0".
 
 *pathName* **transform** *graphX* *graphY* ?\ *switches*\ ... ?
-  Transforms map coordinates into screen coordinates.  *GraphX* and
+  Transforms graph coordinates into screen coordinates.  *GraphX* and
   *graphY* are double precision numbers representing a coordinate on the
   graph.  By default the standard **x** and **y** axes are used.  Returns a
   list containing the x and y screen coordinates.

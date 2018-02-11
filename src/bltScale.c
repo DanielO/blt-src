@@ -182,8 +182,7 @@ static const int numDaysYear[2] = { 365, 366 };
 #define DEF_ACTIVE_RELIEF       "raised"
 #define DEF_AXISLINE_COLOR      RGB_GREY30
 #define DEF_AXISLINE_WIDTH      "0.03i"
-#define DEF_BORDERWIDTH         "0"
-#define DEF_CHECKLIMITS         "0"
+#define DEF_BORDERWIDTH         "2"
 #define DEF_COLORBAR_THICKNESS  "0.15i"
 #define DEF_COMMAND             (char *)NULL
 #define DEF_CURSOR              (char *)NULL
@@ -194,8 +193,11 @@ static const int numDaysYear[2] = { 365, 366 };
 #define DEF_FORMAT_COMMAND      (char *)NULL
 #define DEF_GRIP_BG             STD_NORMAL_BACKGROUND
 #define DEF_GRIP_RELIEF         "raised"
-#define DEF_GRIP_BORDERWIDTH    "1"
+#define DEF_GRIP_BORDERWIDTH    "2"
 #define DEF_HIDE                ""
+#define DEF_HIGHLIGHT_BACKGROUND STD_NORMAL_BACKGROUND
+#define DEF_HIGHLIGHT_COLOR     RGB_BLACK
+#define DEF_HIGHLIGHT_WIDTH     "0"
 #define DEF_HEIGHT              "0"
 #define DEF_LOOSE               "0"
 #define DEF_MARK_COLOR          "0x80808080"
@@ -220,6 +222,7 @@ static const int numDaysYear[2] = { 365, 366 };
 #define DEF_STEPSIZE            "0.0"
 #define DEF_SUBDIVISIONS        "2"
 #define DEF_TAGS                "all"
+#define DEF_TAKE_FOCUS          ""
 #define DEF_TICK_ANCHOR         "c"
 #define DEF_TICK_ANGLE          "0.0"
 #define DEF_TICK_COLOR          RGB_BLACK
@@ -563,7 +566,6 @@ typedef struct _Scale {
     float tickAngle;                    /* Angle in degrees to rotate the
                                          * tick labels. */
     Tk_Anchor tickAnchor;               /* Anchor for the ticks. */
-    Tk_Anchor reqTickAnchor;
 
     GC disabledGC;                      /* Graphics context for disabled
                                          * scale axis line and text. */
@@ -739,12 +741,17 @@ static Blt_ConfigSpec configSpecs[] =
     {BLT_CONFIG_CUSTOM, "-hide", "hide", "Hide", DEF_HIDE, 
         Blt_Offset(Scale, flags), BLT_CONFIG_DONT_SET_DEFAULT, 
         &hideFlagsOption},
+    {BLT_CONFIG_COLOR, "-highlightbackground", "highlightBackground",
+        "HighlightBackground", DEF_HIGHLIGHT_BACKGROUND, 
+        Blt_Offset(Scale, highlightBgColor), 0},
+    {BLT_CONFIG_COLOR, "-highlightcolor", "highlightColor", "HighlightColor",
+        DEF_HIGHLIGHT_COLOR, Blt_Offset(Scale, highlightColor), 0},
+    {BLT_CONFIG_PIXELS_NNEG, "-highlightthickness", "highlightThickness",
+        "HighlightThickness", DEF_HIGHLIGHT_WIDTH, 
+        Blt_Offset(Scale, highlightWidth), BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_BITMASK, "-labeloffset", "labelOffset", "LabelOffset",
         (char *)NULL, Blt_Offset(Scale, flags), 
         BLT_CONFIG_DONT_SET_DEFAULT, (Blt_CustomOption *)LABELOFFSET},
-    {BLT_CONFIG_PIXELS_NNEG, "-ticklinewidth", "tickLineWidth", "TickLineWidth",
-        DEF_TICK_LINEWIDTH, Blt_Offset(Scale, tickLineWidth),
-        BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_BITMASK_INVERT, "-loose", "loose", "Loose", DEF_LOOSE,
          Blt_Offset(Scale, flags), BLT_CONFIG_DONT_SET_DEFAULT,
          (Blt_CustomOption *)TIGHT},
@@ -761,8 +768,6 @@ static Blt_ConfigSpec configSpecs[] =
         Blt_Offset(Scale, outerLeft), BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_CUSTOM, "-mark", "mark", "Mark", (char *)NULL, 
         Blt_Offset(Scale, mark), 0, &limitOption},
-    {BLT_CONFIG_CUSTOM, "-variable", "variable", "Variable", (char *)NULL,
-        Blt_Offset(Scale, varNameObjPtr), BLT_CONFIG_NULL_OK, &traceVarOption},
     {BLT_CONFIG_PIX32, "-markcolor", "markColor", "MarkColor", 
         DEF_MARK_COLOR,  Blt_Offset(Scale, markColor), 0}, 
     {BLT_CONFIG_PIXELS_NNEG, "-markthickness", "markThickness", "MarkThickness",
@@ -802,8 +807,8 @@ static Blt_ConfigSpec configSpecs[] =
         BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_INT, "-subdivisions", "subdivisions", "Subdivisions",
         DEF_SUBDIVISIONS, Blt_Offset(Scale, reqNumMinorTicks), 0},
-    {BLT_CONFIG_ANCHOR, "-tickanchor", "tickAnchor", "Anchor",
-        DEF_TICK_ANCHOR, Blt_Offset(Scale, reqTickAnchor), 0},
+    {BLT_CONFIG_STRING, "-takefocus", "takeFocus", "TakeFocus", DEF_TAKE_FOCUS,
+        Blt_Offset(Scale, takeFocus), BLT_CONFIG_NULL_OK},
     {BLT_CONFIG_FLOAT, "-tickangle", "tickAngle", "TickAngle", DEF_TICK_ANGLE,
         Blt_Offset(Scale, tickAngle), BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_COLOR, "-tickcolor", "tickColor", "TickColor", 
@@ -817,6 +822,9 @@ static Blt_ConfigSpec configSpecs[] =
         DEF_TICK_LABEL_COLOR,  Blt_Offset(Scale, tickLabelColor), 0}, 
     {BLT_CONFIG_PIXELS_NNEG, "-ticklength", "tickLength", "TickLength",
         DEF_TICK_LENGTH, Blt_Offset(Scale, tickLength), 
+        BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_PIXELS_NNEG, "-ticklinewidth", "tickLineWidth", "TickLineWidth",
+        DEF_TICK_LINEWIDTH, Blt_Offset(Scale, tickLineWidth),
         BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_STRING, "-title", "title", "Title", DEF_TITLE,
         Blt_Offset(Scale, title),
@@ -833,10 +841,12 @@ static Blt_ConfigSpec configSpecs[] =
     {BLT_CONFIG_FLOAT, "-valueangle", "valueAngle", "ValueAngle", 
         DEF_VALUE_ANGLE, Blt_Offset(Scale, valueAngle), 
         BLT_CONFIG_DONT_SET_DEFAULT},
-    {BLT_CONFIG_FONT, "-valuefont", "valueFont", "ValueFont",
-        DEF_VALUE_FONT, Blt_Offset(Scale, valueFont), 0},
     {BLT_CONFIG_COLOR, "-valuecolor", "valueColor", "ValueColor", 
         DEF_NORMAL_VALUE_COLOR,  Blt_Offset(Scale, normalValueFgColor), 0}, 
+    {BLT_CONFIG_FONT, "-valuefont", "valueFont", "ValueFont",
+        DEF_VALUE_FONT, Blt_Offset(Scale, valueFont), 0},
+    {BLT_CONFIG_CUSTOM, "-variable", "variable", "Variable", (char *)NULL,
+        Blt_Offset(Scale, varNameObjPtr), BLT_CONFIG_NULL_OK, &traceVarOption},
     {BLT_CONFIG_PIXELS_NNEG, "-width", "width", "Width", DEF_WIDTH, 
         Blt_Offset(Scale, reqWidth), 0},
     {BLT_CONFIG_END, NULL, NULL, NULL, NULL, 0, 0}
@@ -5369,14 +5379,14 @@ ActivateOp(ClientData clientData, Tcl_Interp *interp, int objc,
  *
  * BboxOp --
  *
- *    Returns the name of the picked axis (using the axis bind operation).
- *    Right now, the only name accepted is "current".
+ *      Returns the bounding box of the given part.  The accepted parts are
+ *      "colorbar", "grip", "maxarrow", "minarrow", "title" and "value".
  *
  * Results:
- *    A standard TCL result.  The interpreter result will contain the name of
- *    the axis.
+ *      A standard TCL result.  The interpreter result will contain 4
+ *      number representing the bounding box of the part.
  *
- *      pathName bbox minarrow|maxarrow|value|title|colorbar ?switches?
+ *      pathName bbox partName ?switches?
  *
  *---------------------------------------------------------------------------
  */
@@ -5401,6 +5411,27 @@ BboxOp(ClientData clientData, Tcl_Interp *interp, int objc,
         y1 = scalePtr->valuePtr->y;
         x2 = x1 + scalePtr->valuePtr->width;
         y2 = y1 + scalePtr->valuePtr->height;
+    } else if ((c == 'g') && (strncmp(string, "grip", length) == 0)) {
+        if (HORIZONTAL(scalePtr)) {
+            int x, y;
+
+            x = HMap(scalePtr, scalePtr->mark);
+            y = (scalePtr->y2 + scalePtr->y1) / 2;
+            x1 = x - scalePtr->gripWidth / 2;
+            y1 = y - scalePtr->gripHeight / 2;
+            x2 = x + scalePtr->gripWidth / 2;
+            y2 = y + scalePtr->gripHeight / 2;
+            return PICK_GRIP;
+        }  else {
+            int x, y;
+
+            y = VMap(scalePtr, scalePtr->mark);
+            x = (scalePtr->x2 + scalePtr->x1) / 2;
+            y1 = y - scalePtr->gripWidth / 2;
+            x1 = x - scalePtr->gripHeight / 2;
+            y2 = y + scalePtr->gripWidth / 2;
+            x2 = x + scalePtr->gripHeight / 2;
+        }
     } else if ((c == 'm') && (length > 2) &&
                (strncmp(string, "maxarrow", length) == 0)) {
         if (HORIZONTAL(scalePtr)) {
