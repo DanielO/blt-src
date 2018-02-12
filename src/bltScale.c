@@ -429,6 +429,9 @@ typedef struct _Scale {
     AxisScale scale;                    /* Specifies how to scale the
                                          * scale: linear, logrithmic, or
                                          * time. */
+    const char *takeFocus;              /* Not used in C code, indicates if
+                                         * widget should be included in
+                                         * focus traversal. */
     Tcl_Obj *fmtCmdObjPtr;              /* Specifies a TCL command, to be
                                          * invoked by the scale whenever it
                                          * has to generate tick labels. */
@@ -4404,7 +4407,7 @@ ConfigureScale(
                 scalePtr);
     }
     ResetGCs(scalePtr);
-    if (Blt_ConfigModified(configSpecs, "-palette", "-orient")) {
+    if (Blt_ConfigModified(configSpecs, "-palette", "-orient", (char *)NULL)) {
         if (scalePtr->colorbar.picture != NULL) {
             Blt_FreePicture(scalePtr->colorbar.picture);
             scalePtr->colorbar.picture = NULL;
