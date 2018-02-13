@@ -96,7 +96,7 @@
 #define DEF_FONT                        STD_FONT_NORMAL
 #define DEF_HEIGHT                      "0"
 #define DEF_MAXFONTSIZE                 "0"
-#define DEF_MINFONTSIZE                 "0"
+#define DEF_MINFONTSIZE                 "1"
 #define DEF_NORMAL_DASHES               "0"
 #define DEF_NORMAL_DASH_OFFSET          "0"
 #define DEF_NORMAL_FILL_COLOR           (char *)NULL
@@ -387,7 +387,7 @@ NearestFontSize(double size)
 {
     size = (int)size;
     if (size <= 0.0) {
-        size = 0.5;
+        size = 1.0;
     }
     return size;
 }
@@ -799,6 +799,11 @@ ScaleToFit(LabelItem *labelPtr)
     if ((labelPtr->maxFontSize > 0) &&
         (newFontSize > labelPtr->maxFontSize)) {
         newFontSize = labelPtr->maxFontSize;
+    } 
+    if ((labelPtr->minFontSize > 0) &&
+        (newFontSize < labelPtr->minFontSize)) {
+        newFontSize = labelPtr->minFontSize;
+        labelPtr->flags &= ~DISPLAY_TEXT;
     } 
     /* Create a scaled font and replace the base font with it. */
     font = Blt_Font_Duplicate(labelPtr->tkwin, labelPtr->baseFont,
@@ -1713,6 +1718,10 @@ ScaleProc(
         if ((labelPtr->maxFontSize > 0) &&
             (newFontSize > labelPtr->maxFontSize)) {
             newFontSize = labelPtr->maxFontSize;
+        } 
+        if ((labelPtr->minFontSize > 0) &&
+            (newFontSize < labelPtr->minFontSize)) {
+            newFontSize = labelPtr->minFontSize;
         } 
         font = Blt_Font_Duplicate(labelPtr->tkwin, labelPtr->baseFont,
                                   NearestFontSize(newFontSize));
