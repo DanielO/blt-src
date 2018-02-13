@@ -1011,6 +1011,19 @@ static Blt_ConfigSpec sortSpecs[] =
         (char *)NULL, 0, 0}
 };
 
+#define INDEX_VALUE (1<<0)
+
+typedef struct {
+    unsigned int flags;
+} IndexSwitches;
+
+static Blt_SwitchSpec indexSwitches[] = 
+{
+    {BLT_SWITCH_BITS_NOARG, "-value", "", (char *)NULL,
+        Blt_Offset(IndexSwitches, flags), 0, INDEX_VALUE},
+    {BLT_SWITCH_END}
+};
+
 typedef int (ComboMenuCmdProc)(ComboMenu *comboPtr, Tcl_Interp *interp, 
         int objc, Tcl_Obj *const *objv);
 static int GetItemIterator(Tcl_Interp *interp, ComboMenu *comboPtr,
@@ -3186,6 +3199,8 @@ GetItemByIndex(Tcl_Interp *interp, ComboMenu *comboPtr, const char *string,
         itemPtr = NULL;
     } else if ((c == 'a') && (strcmp(string, "active") == 0)) {
         itemPtr = comboPtr->activePtr;
+    } else if ((c == 'c') && (strcmp(string, "current") == 0)) {
+        itemPtr = comboPtr->selectPtr;
     } else if ((c == 's') && (strcmp(string, "selected") == 0)) {
         itemPtr = comboPtr->selectPtr;
 #ifdef notdef
@@ -5365,21 +5380,16 @@ IndexOp(ClientData clientData, Tcl_Interp *interp, int objc,
 {
     ComboMenu *comboPtr = clientData;
     int index;
-    int isValue;
+    IndexSwitches switches;
 
+    switches.flags = 0;
     /* Process switches  */
-    isValue = FALSE;
-    if (objc == 4) {
-        const char *string;
-
-        string = Tcl_GetString(objv[2]);
-        if (strcmp(string, "-value") == 0) {
-            isValue = TRUE;
-        }
-        objv++, objc--;
+    if (Blt_ParseSwitches(interp, indexSwitches, objc - 3, objv + 3, &switches,
+        BLT_SWITCH_DEFAULTS) < 0) {
+        return TCL_ERROR;
     }
     index = -1;
-    if (isValue) {
+    if (switches.flags & INDEX_VALUE) {
         const char *string;
         Item *itemPtr;
         char c;
