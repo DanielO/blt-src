@@ -7950,10 +7950,12 @@ if test "${blt_with_tcl_lib_dir}" = "no" ; then
   as_fn_error $? "Can't find Tcl library: use --with-tcllibdir switch" "$LINENO" 5
 elif test "${blt_with_tcl_lib_dir}" = "yes" ; then
   TCL_LIB_DIR="${TCL_EXEC_PREFIX}/lib"
-  if test "${TCL_LIB_DIR}" = "/usr/lib" ; then
-    TCL_LIB_SPEC="-ltcl${TCL_LIB_VERSION}"
-  else
-    TCL_LIB_SPEC="-L${TCL_LIB_DIR} -ltcl${TCL_LIB_VERSION}"
+  if test "x${TCL_LIB_SPEC}" = "x" ; then
+    if test "${TCL_LIB_DIR}" = "/usr/lib" ; then
+      TCL_LIB_SPEC="-ltcl${TCL_LIB_VERSION}"
+    else
+      TCL_LIB_SPEC="-L${TCL_LIB_DIR} -ltcl${TCL_LIB_VERSION}"
+    fi
   fi
 else
   for libname in \
@@ -7981,10 +7983,12 @@ if test "${blt_with_tk_lib_dir}" = "no" ; then
   as_fn_error $? "Can't find Tcl library: use --with-tcllibdir switch" "$LINENO" 5
 elif test "${blt_with_tk_lib_dir}" = "yes" ; then
   TK_LIB_DIR="${TK_EXEC_PREFIX}/lib"
-  if test "${TK_LIB_DIR}" = "/usr/lib" ; then
-    TK_LIB_SPEC="-ltk${TK_LIB_VERSION}"
-  else
-    TK_LIB_SPEC="-L${TK_LIB_DIR} -ltk${TK_LIB_VERSION}"
+  if test "x${TK_LIB_SPEC}" = "x" ; then
+    if test "${TK_LIB_DIR}" = "/usr/lib" ; then
+      TK_LIB_SPEC="-ltk${TK_LIB_VERSION}"
+    else
+      TK_LIB_SPEC="-L${TK_LIB_DIR} -ltk${TK_LIB_VERSION}"
+    fi
   fi
 else
   for libname in \
