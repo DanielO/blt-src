@@ -285,7 +285,7 @@ all:
 install:
 	$(MKDIR_P) $(DESTDIR)$(destdir)
 	for i in $(FILES) ; do \
-	    $(INSTALL_DATA) $(srcdir)/$$i $(destdir); \
+	    $(INSTALL_DATA) $(srcdir)/$$i $(DESTDIR)$(destdir); \
 	done 
 
 clean:
