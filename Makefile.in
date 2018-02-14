@@ -50,7 +50,7 @@ install:
 	for i in $(subdirs); do \
 	   $(MAKE) -C $$i install || exit 1 ; \
 	done
-	$(INSTALL) bltConfig.sh $(libdir)
+	$(INSTALL) bltConfig.sh $(DESTDIR)$(libdir)
 
 clean:
 	for i in $(subdirs); do \
