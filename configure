@@ -10505,7 +10505,7 @@ fi
     if test "$test_ok" = yes; then
       SO_CFLAGS="-fpic"
       SO_LD="ld"
-      SO_LDFLAGS="-Bshareable -x"
+      SO_LDFLAGS="-Bshareable -x -rpath ${prefix}/lib/blt${BLT_VERSION}"
     fi
     ;;
 
