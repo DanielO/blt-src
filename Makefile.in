@@ -14,6 +14,7 @@ includedir =	@includedir@
 libdir =	@libdir@
 prefix =	@prefix@
 srcdir =	@srcdir@
+bltlibrary =	@BLT_LIBRARY@
 
 version =	@BLT_VERSION@
 scriptdir =	$(prefix)/lib
@@ -50,7 +51,7 @@ install:
 	for i in $(subdirs); do \
 	   $(MAKE) -C $$i install || exit 1 ; \
 	done
-	$(INSTALL) bltConfig.sh $(DESTDIR)$(libdir)
+	$(INSTALL) bltConfig.sh $(DESTDIR)$(bltlibrary)
 
 clean:
 	for i in $(subdirs); do \
