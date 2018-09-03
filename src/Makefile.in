@@ -66,15 +66,14 @@ Z_LIB_SPEC =		@Z_LIB_SPEC@
 version =		@BLT_MAJOR_VERSION@@BLT_MINOR_VERSION@
 
 # ------------------------------------------------------------------------
-# 	Source and targer installation directories 
+# 	Source and target installation directories 
 # ------------------------------------------------------------------------
 
 bindir =		$(exec_prefix)/bin
 datadir =		@datadir@
 datarootdir =		@datarootdir@
 exec_prefix =		@exec_prefix@
-incdir =		$(prefix)/include
-includedir =		@includedir@
+incdir =		@BLT_INC_DIR@
 libdir =		@libdir@
 prefix =		@prefix@
 scriptdir =		$(exec_prefix)/lib
@@ -775,9 +774,9 @@ install-packages: $(blt_tcl_pkg_so) $(blt_tk_pkg_so) $(blt_tcl_pkgs) $(blt_tk_pk
         done
 
 install-headers:
-	$(INSTALL) -d $(DESTDIR)$(incdir)/blt
+	$(INSTALL) -d $(DESTDIR)$(incdir)
 	for i in $(headers) ; do \
-	    $(INSTALL_DATA) -m 0444 $$i $(DESTDIR)$(incdir)/blt ; \
+	    $(INSTALL_DATA) -m 0444 $$i $(DESTDIR)$(incdir) ; \
 	done
 
 lint:
