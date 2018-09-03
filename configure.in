@@ -381,9 +381,9 @@ case $target in
 esac
 
 build_shared="yes"
-#if test $blt_enable_symbols = "yes" ; then
-#  LIB_SUFFIX=g
-#fi
+if test $blt_enable_symbols = "yes" ; then
+  LIB_SUFFIX=g
+fi
 
 # -----------------------------------------------------------------------
 # Hardware characteristics:     
