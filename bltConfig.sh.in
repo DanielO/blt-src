@@ -56,7 +56,7 @@ BLT_EXEC_EXT='@BLT_EXEC_EXT@'
 BLT_LIB_VERSION='@BLT_LIB_VERSION@'
 
 # Name of the standard BLT library.
-BLT_LIB_NAME="Blt${BLT_LIB_VERSION}"
+BLT_LIB_NAME="Blt${BLT_LIB_VERSION}@BLT_LIB_SUFFIX@"
 # Name of the static BLT library.
 BLT_STATIC_LIB="${BLT_LIB_DIR}/lib${BLT_LIB_NAME}.a"
 # Libraries link specification for the full BLT library.
