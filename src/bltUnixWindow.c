@@ -146,7 +146,9 @@ Blt_MakeTransparentWindowExist(Tk_Window tkwin, Window parent, int isBusy)
 {
     TkWindow *winPtr = (TkWindow *) tkwin;
     TkWindow *winPtr2;
+    Tcl_HashEntry *hPtr;
     int notUsed;
+    TkDisplay *dispPtr;
     long int mask;
 
     if (winPtr->window != None) {
@@ -179,6 +181,10 @@ Blt_MakeTransparentWindowExist(Tk_Window tkwin, Window parent, int isBusy)
         mask,                   /* valuemask */
         &winPtr->atts           /* attributes */ );
 
+    dispPtr = winPtr->dispPtr;
+    hPtr = Tcl_CreateHashEntry(&dispPtr->winTable, (char *)winPtr->window,
+        &notUsed);
+    Tcl_SetHashValue(hPtr, winPtr);
     winPtr->dirtyAtts = 0;
     winPtr->dirtyChanges = 0;
 #ifdef TK_USE_INPUT_METHODS
